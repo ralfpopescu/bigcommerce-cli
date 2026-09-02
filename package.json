@@ -1,0 +1,52 @@
+{
+  "name": "bigc",
+  "version": "0.2.0",
+  "description": "Unofficial BigCommerce API CLI — full REST Management coverage, plus Admin GraphQL and a raw passthrough",
+  "keywords": [
+    "bigcommerce",
+    "cli",
+    "ecommerce",
+    "api",
+    "rest",
+    "graphql",
+    "storefront"
+  ],
+  "license": "MIT",
+  "author": "Ralf Popescu <ralfpopescu@gmail.com>",
+  "homepage": "https://github.com/ralfpopescu/bigc#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ralfpopescu/bigc.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ralfpopescu/bigc/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "bigc": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "cli-table3": "^0.6.3",
+    "commander": "^12.0.0",
+    "form-data": "^4.0.6",
+    "node-fetch": "^2.7.0",
+    "ora": "^5.4.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/node-fetch": "^2.6.11",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}
