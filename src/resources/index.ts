@@ -1,11 +1,12 @@
 import { ResourceSpec } from '../resource';
+
 import { CATALOG } from './catalog';
-import { CUSTOMERS, SUBSCRIBERS, SEGMENTS, SHOPPER_PROFILES, WISHLISTS } from './customers';
+import { CHANNELS, INVENTORY, SITES } from './channels';
+import { ABANDONED_CARTS, CARTS, CHECKOUTS, PAYMENTS, PRICELISTS, PROMOTIONS } from './commerce';
+import { CONTENT, MARKETING, STOREFRONT, THEMES } from './content';
+import { CUSTOMERS, SEGMENTS, SHOPPER_PROFILES, SUBSCRIBERS, WISHLISTS } from './customers';
 import { ORDERS, PICKUP } from './orders';
-import { CARTS, CHECKOUTS, PAYMENTS, PRICELISTS, PROMOTIONS, ABANDONED_CARTS } from './commerce';
-import { CHANNELS, SITES, INVENTORY } from './channels';
-import { CONTENT, THEMES, MARKETING, STOREFRONT } from './content';
-import { SETTINGS, STORE, CURRENCIES, TAX, SHIPPING, GEOGRAPHY, WEBHOOKS } from './store';
+import { CURRENCIES, GEOGRAPHY, SETTINGS, SHIPPING, STORE, TAX, WEBHOOKS } from './store';
 
 /**
  * The full REST Management surface, declared rather than written out. Anything
@@ -47,10 +48,16 @@ export const RESOURCES: ResourceSpec[] = [
 export function paramsFor(...path: string[]): string[] {
   let nodes: ResourceSpec[] = RESOURCES;
   let found: ResourceSpec | undefined;
+
   for (const name of path) {
-    found = nodes.find(n => n.name === name);
-    if (!found) return [];
+    found = nodes.find((n) => n.name === name);
+
+    if (!found) {
+      return [];
+    }
+
     nodes = found.children ?? [];
   }
+
   return found?.params ?? [];
 }

@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/bigcommerce/bigcommerce-cli/security/advisories/new
+    about: Report privately. Please do not open a public issue for a security problem.
+  - name: BigCommerce API documentation
+    url: https://developer.bigcommerce.com/docs/rest-management
+    about: Questions about API behaviour itself, rather than this CLI.
+  - name: Question or discussion
+    url: https://github.com/bigcommerce/bigcommerce-cli/discussions
+    about: Usage questions and ideas that aren't yet a bug report.

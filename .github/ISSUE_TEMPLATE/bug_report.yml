@@ -1,0 +1,72 @@
+name: Bug report
+description: Something in the CLI doesn't work the way it should
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report.
+
+        **Before you post:** this is a public repository. Redact store hashes,
+        access tokens, API keys, customer data, and anything internal from the
+        commands and output you paste below. A leaked token should be treated
+        as compromised and rotated in the control panel.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Command to reproduce
+      description: The `bigc` command you ran, with credentials and identifiers redacted.
+      render: shell
+      placeholder: bigc catalog products list --sku EXAMPLE-SKU
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: What the CLI printed. Redact before pasting.
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: bigc version
+      description: Output of `bigc --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: node-version
+    attributes:
+      label: Node version
+      description: Output of `node --version`.
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: macOS 15.6, Ubuntu 24.04, Windows 11
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: sanitized
+    attributes:
+      label: Confirmation
+      options:
+        - label: I've removed all credentials, customer data, and internal information from this report.
+          required: true

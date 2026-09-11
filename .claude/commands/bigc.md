@@ -264,5 +264,5 @@ bigc customers create --file customers.json   # file can be [] array of customer
 
 ## Source
 
-CLI source is in `/Users/ralf.popescu/Repos/bc-cli`. Build with `npm run build` after changes.
+Build with `npm run build` after changing the CLI source.
 BigCommerce API docs: https://developer.bigcommerce.com/docs/rest-management

@@ -1,5 +1,6 @@
 import { ResourceSpec } from '../resource';
-import { metafields, batchMetafields } from './metafields';
+
+import { batchMetafields, metafields } from './metafields';
 
 const CHANNEL = 'channels/{channel_id}';
 
@@ -206,7 +207,15 @@ export const INVENTORY: ResourceSpec = {
       path: 'inventory/items',
       style: 'v3-item',
       ops: ['list'],
-      fields: ['product_id', 'variant_id', 'sku', 'location_id', 'available_to_sell', 'total_inventory_onhand', 'is_in_stock'],
+      fields: [
+        'product_id',
+        'variant_id',
+        'sku',
+        'location_id',
+        'available_to_sell',
+        'total_inventory_onhand',
+        'is_in_stock',
+      ],
       params: ['location_id:in', 'sku:in', 'product_id:in', 'variant_id:in'],
     },
     {
@@ -224,7 +233,14 @@ export const INVENTORY: ResourceSpec = {
           path: 'inventory/locations/{location_id}/items',
           style: 'v3-item',
           ops: ['list'],
-          fields: ['product_id', 'variant_id', 'sku', 'available_to_sell', 'total_inventory_onhand', 'safety_stock'],
+          fields: [
+            'product_id',
+            'variant_id',
+            'sku',
+            'available_to_sell',
+            'total_inventory_onhand',
+            'safety_stock',
+          ],
           params: ['sku:in', 'product_id:in', 'variant_id:in'],
           actions: [
             {

@@ -1,7 +1,7 @@
 {
-  "name": "bigc",
+  "name": "@bigcommerce/cli",
   "version": "0.2.0",
-  "description": "Unofficial BigCommerce API CLI — full REST Management coverage, plus Admin GraphQL and a raw passthrough",
+  "description": "BigCommerce API CLI \u2014 full REST Management coverage, plus Admin GraphQL and a raw passthrough",
   "keywords": [
     "bigcommerce",
     "cli",
@@ -12,17 +12,17 @@
     "storefront"
   ],
   "license": "MIT",
-  "author": "Ralf Popescu <ralfpopescu@gmail.com>",
-  "homepage": "https://github.com/ralfpopescu/bigc#readme",
+  "author": "BigCommerce, Inc.",
+  "homepage": "https://github.com/bigcommerce/bigcommerce-cli#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ralfpopescu/bigc.git"
+    "url": "git+https://github.com/bigcommerce/bigcommerce-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/ralfpopescu/bigc/issues"
+    "url": "https://github.com/bigcommerce/bigcommerce-cli/issues"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "files": [
     "dist"
@@ -30,9 +30,21 @@
   "bin": {
     "bigc": "dist/index.js"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
-    "build": "tsc && chmod +x dist/index.js",
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/index.js",
     "dev": "ts-node src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint 'src/**/*.ts' 'test/**/*.ts' --max-warnings 0",
+    "lint:fix": "eslint 'src/**/*.ts' 'test/**/*.ts' --fix",
+    "format": "prettier --write 'src/**/*.ts' 'test/**/*.ts' '*.md'",
+    "format:check": "prettier --check 'src/**/*.ts' 'test/**/*.ts'",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -44,9 +56,17 @@
     "ora": "^5.4.1"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@bigcommerce/eslint-config": "^2.13.1",
+    "@types/node": "^22.0.0",
     "@types/node-fetch": "^2.6.11",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^5.0.0",
+    "eslint": "^8.57.1",
+    "eslint-import-resolver-typescript": "^3.6.3",
+    "prettier": "^3.3.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.0"
-  }
+    "typescript": "^5.4.0",
+    "vitest": "^5.0.0"
+  },
+  "prettier": "@bigcommerce/eslint-config/prettier"
 }

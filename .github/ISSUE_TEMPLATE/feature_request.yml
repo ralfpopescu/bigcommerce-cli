@@ -1,0 +1,46 @@
+name: Feature request
+description: Suggest a new command, flag, or endpoint
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion.
+
+        **Before you post:** this is a public repository. Please don't include
+        credentials, customer data, or internal company information.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What are you trying to do that's awkward or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would it look like?
+      description: The command or flag you have in mind.
+      render: shell
+      placeholder: bigc catalog products export --format csv
+    validations:
+      required: false
+
+  - type: input
+    id: endpoint
+    attributes:
+      label: Related API endpoint
+      description: If this wraps a BigCommerce endpoint, which one? A docs link helps.
+      placeholder: GET /v3/catalog/products
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried?
+      description: Workarounds you're using now, including `bigc api` if it covers part of it.
+    validations:
+      required: false

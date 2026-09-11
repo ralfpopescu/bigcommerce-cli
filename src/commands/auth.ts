@@ -1,13 +1,9 @@
+import chalk from 'chalk';
 import { Command } from 'commander';
 import * as readline from 'readline';
-import {
-  readCredentials,
-  setProfile,
-  removeProfile,
-  setActiveProfile,
-} from '../config';
-import { success, errorOut } from '../output';
-import chalk from 'chalk';
+
+import { readCredentials, removeProfile, setActiveProfile, setProfile } from '../config';
+import { errorOut, success } from '../output';
 
 // Terminal input goes through readline. Piped input is drained once up front
 // instead: a readline interface over a pipe closes as soon as the stream ends,
@@ -17,18 +13,22 @@ let piped: string[] | null = null;
 async function nextPipedLine(): Promise<string> {
   if (piped === null) {
     const chunks: Buffer[] = [];
-    for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+
+    for await (const chunk of process.stdin) {
+      chunks.push(Buffer.from(chunk as Uint8Array));
+    }
+
     piped = Buffer.concat(chunks).toString('utf-8').split(/\r?\n/);
   }
+
   return (piped.shift() ?? '').trim();
 }
 
 let iface: readline.Interface | null = null;
 
 function prompts(): readline.Interface {
-  if (!iface) {
-    iface = readline.createInterface({ input: process.stdin, output: process.stdout });
-  }
+  iface ??= readline.createInterface({ input: process.stdin, output: process.stdout });
+
   return iface;
 }
 
@@ -41,10 +41,12 @@ function prompt(question: string): Promise<string> {
   // Unattended: the question is progress output, so keep stdout clean for data.
   if (!process.stdin.isTTY) {
     process.stderr.write(question);
+
     return nextPipedLine();
   }
-  return new Promise(resolve => {
-    prompts().question(question, answer => resolve(answer.trim()));
+
+  return new Promise((resolve) => {
+    prompts().question(question, (answer) => resolve(answer.trim()));
   });
 }
 
@@ -54,17 +56,25 @@ function prompt(question: string): Promise<string> {
  * the first place, so there it's just a plain prompt.
  */
 function promptSecret(question: string): Promise<string> {
-  if (!process.stdin.isTTY) return prompt(question);
+  if (!process.stdin.isTTY) {
+    return prompt(question);
+  }
 
   const rl = prompts();
-  return new Promise(resolve => {
+
+  return new Promise((resolve) => {
     let muted = false;
+
     // readline routes every echo through this hook, including the question
     // itself — mute only after the question has been written.
-    (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = s => {
-      if (!muted) process.stdout.write(s);
+    // eslint-disable-next-line no-underscore-dangle, @typescript-eslint/naming-convention -- readline exposes no public hook for suppressing the echo.
+    (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = (s) => {
+      if (!muted) {
+        process.stdout.write(s);
+      }
     };
-    rl.question(question, answer => {
+
+    rl.question(question, (answer) => {
       muted = false;
       process.stdout.write('\n');
       resolve(answer.trim());
@@ -87,12 +97,20 @@ export function registerAuth(program: Command): void {
         // Prompt only for what wasn't passed, so this works in a script.
         if (!opts.storeHash || !opts.token) {
           console.log(chalk.bold('\nBigCommerce API credentials'));
-          console.log(chalk.gray('Find these in: Store Control Panel → Advanced Settings → API Accounts\n'));
+          console.log(
+            chalk.gray('Find these in: Store Control Panel → Advanced Settings → API Accounts\n'),
+          );
         }
-        const storeHash = opts.storeHash ?? await prompt('Store hash: ');
-        const accessToken = opts.token ?? await promptSecret('Access token: ');
+
+        const storeHash = opts.storeHash ?? (await prompt('Store hash: '));
+        const accessToken = opts.token ?? (await promptSecret('Access token: '));
+
         closePrompts();
-        if (!storeHash || !accessToken) errorOut('Store hash and access token are required');
+
+        if (!storeHash || !accessToken) {
+          errorOut('Store hash and access token are required');
+        }
+
         setProfile(opts.profile, storeHash, accessToken);
         success(`Saved profile "${opts.profile}" (store: ${storeHash})`);
       } catch (e) {
@@ -120,12 +138,16 @@ export function registerAuth(program: Command): void {
     .action(() => {
       const creds = readCredentials();
       const profiles = Object.entries(creds.profiles);
+
       if (profiles.length === 0) {
         console.log(chalk.gray('No profiles saved. Run: bigc auth login'));
+
         return;
       }
+
       for (const [name, p] of profiles) {
         const active = name === creds.activeProfile ? chalk.green(' (active)') : '';
+
         console.log(`  ${chalk.cyan(name)}${active}  store: ${p.storeHash}`);
       }
     });

@@ -1,0 +1,6 @@
+# Every pull request requires review from a maintainer before it can be merged.
+# Keep this in sync with the repository's collaborator groups:
+#   OSS Maintainers        - Admin
+#   continuous-integration - Write
+
+* @bigcommerce/oss-maintainers

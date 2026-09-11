@@ -1,6 +1,14 @@
 import { ResourceSpec } from '../resource';
 
-const METAFIELD_FIELDS = ['id', 'namespace', 'key', 'value', 'permission_set', 'resource_type', 'resource_id'];
+const METAFIELD_FIELDS = [
+  'id',
+  'namespace',
+  'key',
+  'value',
+  'permission_set',
+  'resource_type',
+  'resource_id',
+];
 
 /**
  * Metafields hang off most V3 resources with an identical shape, so every one

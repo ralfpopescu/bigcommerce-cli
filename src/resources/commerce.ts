@@ -1,4 +1,5 @@
 import { ResourceSpec } from '../resource';
+
 import { metafields } from './metafields';
 
 const CART = 'carts/{cart_id}';
@@ -211,7 +212,15 @@ export const PRICELISTS: ResourceSpec = {
       style: 'v3-item',
       idLabel: 'record',
       ops: ['list', 'get'],
-      fields: ['variant_id', 'product_id', 'sku', 'currency', 'price', 'sale_price', 'retail_price'],
+      fields: [
+        'variant_id',
+        'product_id',
+        'sku',
+        'currency',
+        'price',
+        'sale_price',
+        'retail_price',
+      ],
       params: ['variant_id:in', 'product_id:in', 'currency', 'sku:in'],
       actions: [
         {

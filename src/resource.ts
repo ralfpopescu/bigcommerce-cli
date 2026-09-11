@@ -1,9 +1,9 @@
-import * as fs from 'fs';
 import { Command } from 'commander';
+import * as fs from 'fs';
 import ora from 'ora';
-import { getProfile } from './config';
-import { ApiClient } from './api/client';
-import { print, success, errorOut, OutputFormat } from './output';
+
+import { createClient } from './api/factory';
+import { errorOut, OutputFormat, print, success } from './output';
 
 export type Version = 'v2' | 'v3';
 export type Op = 'list' | 'get' | 'create' | 'update' | 'delete' | 'delete-many';
@@ -59,16 +59,28 @@ export interface ResourceSpec {
   actions?: ActionSpec[];
 }
 
-// ── Shared plumbing ─────────────────────────────────────────────────────────
+/**
+ * A spec that `mount` has already confirmed is addressable. The operation
+ * builders take this rather than `ResourceSpec`, so `path` and `style` are
+ * known-present instead of being re-asserted in each one.
+ */
+type AddressableSpec = ResourceSpec & { path: string; style: Style };
 
-function client(profile?: string): ApiClient {
-  const p = getProfile(profile);
-  return new ApiClient(p.storeHash, p.accessToken);
+function isAddressable(spec: ResourceSpec): spec is AddressableSpec {
+  return spec.path !== undefined && spec.style !== undefined;
 }
 
+// ── Shared plumbing ─────────────────────────────────────────────────────────
+
 function parseInput(opts: { data?: string; file?: string }): unknown {
-  if (opts.data) return JSON.parse(opts.data);
-  if (opts.file) return JSON.parse(fs.readFileSync(opts.file, 'utf-8'));
+  if (opts.data) {
+    return JSON.parse(opts.data);
+  }
+
+  if (opts.file) {
+    return JSON.parse(fs.readFileSync(opts.file, 'utf-8'));
+  }
+
   throw new Error('Provide --data <json> or --file <path>');
 }
 
@@ -85,15 +97,24 @@ function label(placeholder: string): string {
 }
 
 function placeholders(path: string): string[] {
-  return Array.from(path.matchAll(/\{([a-z_]+)\}/g)).map(m => m[1]);
+  // The capture group is not optional in the pattern, so a match always has one.
+  return Array.from(path.matchAll(/\{([a-z_]+)\}/g)).flatMap((m) =>
+    m[1] === undefined ? [] : [m[1]],
+  );
 }
 
 function fill(path: string, values: Record<string, unknown>): string {
   return path.replace(/\{([a-z_]+)\}/g, (_, key: string) => {
     const value = values[propName(key)];
+
     if (value === undefined || value === null || value === '') {
       throw new Error(`Missing ${optionName(key)}`);
     }
+
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      throw new Error(`${optionName(key)} must be a single value`);
+    }
+
     return encodeURIComponent(String(value));
   });
 }
@@ -109,9 +130,13 @@ function addOpts(cmd: Command): Command {
 /** Adds a required option for every {placeholder} the path needs. */
 function addPathOpts(cmd: Command, path: string, skip: string[] = []): Command {
   for (const p of placeholders(path)) {
-    if (skip.includes(p)) continue;
-    cmd.requiredOption(`${optionName(p)} <value>`, `${label(p)}`);
+    if (skip.includes(p)) {
+      continue;
+    }
+
+    cmd.requiredOption(`${optionName(p)} <value>`, label(p));
   }
+
   return cmd;
 }
 
@@ -119,15 +144,24 @@ function addParamOpts(cmd: Command, params: string[] = []): Command {
   for (const p of params) {
     cmd.option(`${optionName(p)} <value>`, `filter by ${label(p)}`);
   }
+
   return cmd;
 }
 
-function collectParams(params: string[] = [], opts: Record<string, unknown>): Record<string, unknown> {
+function collectParams(
+  params: string[] | undefined,
+  opts: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const p of params) {
+
+  for (const p of params ?? []) {
     const value = opts[propName(p)];
-    if (value !== undefined) out[p] = value;
+
+    if (value !== undefined) {
+      out[p] = value;
+    }
   }
+
   return out;
 }
 
@@ -140,15 +174,24 @@ function isEnveloped(style: Style): boolean {
 }
 
 function defaultOps(style: Style): Op[] {
-  if (style === 'v3-singleton' || style === 'v2-singleton') return ['get', 'update'];
+  if (style === 'v3-singleton' || style === 'v2-singleton') {
+    return ['get', 'update'];
+  }
+
   return ['list', 'get', 'create', 'update', 'delete'];
 }
 
 /** Runs an action, stopping the spinner exactly once whichever way it ends. */
-async function run<T>(message: string, fn: () => Promise<T>, onDone: (value: T) => void): Promise<void> {
+async function run<T>(
+  message: string,
+  fn: () => Promise<T>,
+  onDone: (value: T) => void,
+): Promise<void> {
   const spinner = ora(message).start();
+
   try {
     const value = await fn();
+
     spinner.stop();
     onDone(value);
   } catch (e) {
@@ -159,168 +202,261 @@ async function run<T>(message: string, fn: () => Promise<T>, onDone: (value: T) 
 
 // ── Operation builders ──────────────────────────────────────────────────────
 
-function registerList(parent: Command, spec: ResourceSpec): void {
-  const style = spec.style as Style;
+function registerList(parent: Command, spec: AddressableSpec): void {
+  const { style } = spec;
   const version = versionOf(style);
-  const path = spec.path as string;
+  const { path } = spec;
   const paginated = spec.paginate !== false;
 
   const cmd = parent.command('list').description(`List ${spec.describe.toLowerCase()}`);
+
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
+
   if (paginated) {
     cmd
       .option('--page <n>', 'page number')
       .option('--limit <n>', 'results per page (max 250)')
       .option('--all', 'fetch all pages');
   }
-  cmd.option('--query <k=v>', 'extra query parameter (repeatable)', collectPairs, {} as Record<string, string>);
 
-  addOpts(cmd).action(async (opts: BaseOpts & { page?: string; limit?: string; all?: boolean; query: Record<string, string> }) => {
-    await run(`Fetching ${spec.name}...`, async () => {
-      const bc = client(opts.profile);
-      const resource = fill(path, opts);
-      const params = { ...collectParams(spec.params, opts), ...opts.query };
+  cmd.option('--query <k=v>', 'extra query parameter (repeatable)', collectPairs, emptyPairs());
 
-      if (paginated && opts.all) {
-        return version === 'v3' ? bc.getAllV3(resource, params) : bc.getAllV2(resource, params);
-      }
-      if (paginated) {
-        if (opts.page) params.page = opts.page;
-        if (opts.limit) params.limit = opts.limit;
-      }
-      const res = await bc.get(version, resource, params);
-      const data = isEnveloped(style) ? (res as { data: unknown }).data : res;
-      // V2 answers 204 with no body for an empty collection.
-      return data ?? [];
-    }, data => print(data, opts.output, spec.fields));
-  });
+  addOpts(cmd).action(
+    async (
+      opts: BaseOpts & {
+        page?: string;
+        limit?: string;
+        all?: boolean;
+        query: Record<string, string>;
+      },
+    ) => {
+      await run(
+        `Fetching ${spec.name}...`,
+        async () => {
+          const bc = createClient(opts.profile);
+          const resource = fill(path, opts);
+          const params = { ...collectParams(spec.params, opts), ...opts.query };
+
+          if (paginated && opts.all) {
+            return version === 'v3' ? bc.getAllV3(resource, params) : bc.getAllV2(resource, params);
+          }
+
+          if (paginated) {
+            if (opts.page) {
+              params.page = opts.page;
+            }
+
+            if (opts.limit) {
+              params.limit = opts.limit;
+            }
+          }
+
+          const res: { data?: unknown } = await bc.get(version, resource, params);
+          const data = isEnveloped(style) ? (res as { data: unknown }).data : res;
+
+          // V2 answers 204 with no body for an empty collection.
+          return data ?? [];
+        },
+        (data) => print(data, opts.output, spec.fields),
+      );
+    },
+  );
 }
 
-function registerGet(parent: Command, spec: ResourceSpec): void {
-  const style = spec.style as Style;
+function registerGet(parent: Command, spec: AddressableSpec): void {
+  const { style } = spec;
   const version = versionOf(style);
-  const path = spec.path as string;
+  const { path } = spec;
   const singleton = style.endsWith('singleton');
 
-  const cmd = parent.command('get').description(`Get ${singleton ? spec.describe.toLowerCase() : `a ${spec.idLabel ?? spec.name} by ID`}`);
-  if (!singleton) cmd.argument('<id>', `${spec.idLabel ?? spec.name} ID`);
+  const cmd = parent
+    .command('get')
+    .description(
+      `Get ${singleton ? spec.describe.toLowerCase() : `a ${spec.idLabel ?? spec.name} by ID`}`,
+    );
+
+  if (!singleton) {
+    cmd.argument('<id>', `${spec.idLabel ?? spec.name} ID`);
+  }
+
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
 
   addOpts(cmd).action(async (...argv: unknown[]) => {
     const opts = argv[singleton ? 0 : 1] as BaseOpts;
     const id = singleton ? undefined : (argv[0] as string);
-    await run(`Fetching ${spec.name}...`, async () => {
-      const bc = client(opts.profile);
-      const resource = fill(path, opts);
-      const params = collectParams(spec.params, opts);
 
-      if (style === 'v3-batch') {
-        const res = await bc.get(version, resource, { ...params, [spec.deleteQuery ?? 'id:in']: id }) as { data: unknown[] };
-        const found = (res.data ?? [])[0];
-        if (!found) throw new Error(`${spec.name} ${id} not found`);
-        return found;
-      }
-      const res = await bc.get(version, singleton ? resource : `${resource}/${id}`, params);
-      return isEnveloped(style) ? (res as { data: unknown }).data : res;
-    }, data => print(data, opts.output, undefined));
+    await run(
+      `Fetching ${spec.name}...`,
+      async () => {
+        const bc = createClient(opts.profile);
+        const resource = fill(path, opts);
+        const params = collectParams(spec.params, opts);
+
+        if (style === 'v3-batch') {
+          const batch = await bc.get<{ data?: unknown[] }>(version, resource, {
+            ...params,
+            [spec.deleteQuery ?? 'id:in']: id,
+          });
+          const found = (batch.data ?? [])[0];
+
+          if (!found) {
+            throw new Error(`${spec.name} ${id} not found`);
+          }
+
+          return found;
+        }
+
+        const res: { data?: unknown } = await bc.get(
+          version,
+          singleton ? resource : `${resource}/${id}`,
+          params,
+        );
+
+        return isEnveloped(style) ? (res as { data: unknown }).data : res;
+      },
+      (data) => print(data, opts.output, undefined),
+    );
   });
 }
 
-function registerCreate(parent: Command, spec: ResourceSpec): void {
-  const style = spec.style as Style;
+function registerCreate(parent: Command, spec: AddressableSpec): void {
+  const { style } = spec;
   const version = versionOf(style);
-  const path = spec.path as string;
+  const { path } = spec;
 
   const cmd = parent
     .command('create')
     .description(`Create ${spec.idLabel ?? spec.name}`)
     .option('--data <json>', 'request body as JSON')
     .option('--file <path>', 'path to a JSON file');
+
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
 
   addOpts(cmd).action(async (opts: BaseOpts & { data?: string; file?: string }) => {
-    await run(`Creating ${spec.name}...`, async () => {
-      const bc = client(opts.profile);
-      const resource = fill(path, opts);
-      const input = parseInput(opts);
-      const body = style === 'v3-batch' && !Array.isArray(input) ? [input] : input;
-      const res = await bc.request('POST', `${version}/${resource}`, {
-        body,
-        params: collectParams(spec.params, opts),
-      });
-      return isEnveloped(style) ? (res as { data: unknown }).data : res;
-    }, data => {
-      success(`Created ${Array.isArray(data) ? `${data.length} ${spec.name}` : spec.idLabel ?? spec.name}`);
-      print(data, opts.output, spec.fields);
-    });
+    await run(
+      `Creating ${spec.name}...`,
+      async () => {
+        const bc = createClient(opts.profile);
+        const resource = fill(path, opts);
+        const input = parseInput(opts);
+        const body = style === 'v3-batch' && !Array.isArray(input) ? [input] : input;
+        const res: { data?: unknown } = await bc.request('POST', `${version}/${resource}`, {
+          body,
+          params: collectParams(spec.params, opts),
+        });
+
+        return isEnveloped(style) ? (res as { data: unknown }).data : res;
+      },
+      (data) => {
+        success(
+          `Created ${Array.isArray(data) ? `${data.length} ${spec.name}` : (spec.idLabel ?? spec.name)}`,
+        );
+        print(data, opts.output, spec.fields);
+      },
+    );
   });
 }
 
-function registerUpdate(parent: Command, spec: ResourceSpec): void {
-  const style = spec.style as Style;
+function registerUpdate(parent: Command, spec: AddressableSpec): void {
+  const { style } = spec;
   const version = versionOf(style);
-  const path = spec.path as string;
+  const { path } = spec;
   const singleton = style.endsWith('singleton');
   const batch = style === 'v3-batch';
 
-  const cmd = parent.command('update').description(`Update ${singleton ? spec.describe.toLowerCase() : spec.idLabel ?? spec.name}`);
-  if (batch) cmd.argument('[id]', `${spec.idLabel ?? spec.name} ID (omit when --data is an array)`);
-  else if (!singleton) cmd.argument('<id>', `${spec.idLabel ?? spec.name} ID`);
-  cmd.option('--data <json>', 'fields to update as JSON').option('--file <path>', 'path to a JSON file');
+  const cmd = parent
+    .command('update')
+    .description(`Update ${singleton ? spec.describe.toLowerCase() : (spec.idLabel ?? spec.name)}`);
+
+  if (batch) {
+    cmd.argument('[id]', `${spec.idLabel ?? spec.name} ID (omit when --data is an array)`);
+  } else if (!singleton) {
+    cmd.argument('<id>', `${spec.idLabel ?? spec.name} ID`);
+  }
+
+  cmd
+    .option('--data <json>', 'fields to update as JSON')
+    .option('--file <path>', 'path to a JSON file');
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
 
   addOpts(cmd).action(async (...argv: unknown[]) => {
     const opts = argv[singleton ? 0 : 1] as BaseOpts & { data?: string; file?: string };
     const id = singleton ? undefined : (argv[0] as string | undefined);
-    await run(`Updating ${spec.name}...`, async () => {
-      const bc = client(opts.profile);
-      const resource = fill(path, opts);
-      const input = parseInput(opts);
 
-      const params = collectParams(spec.params, opts);
+    await run(
+      `Updating ${spec.name}...`,
+      async () => {
+        const bc = createClient(opts.profile);
+        const resource = fill(path, opts);
+        const input = parseInput(opts);
 
-      if (batch) {
-        if (!id && !Array.isArray(input)) {
-          throw new Error(`Provide an ID, or pass an array of objects that each carry an "id"`);
+        const params = collectParams(spec.params, opts);
+
+        if (batch) {
+          if (!id && !Array.isArray(input)) {
+            throw new Error(`Provide an ID, or pass an array of objects that each carry an "id"`);
+          }
+
+          const body = id ? [{ ...(input as Record<string, unknown>), id: numeric(id) }] : input;
+          const updated = await bc.request<{ data?: unknown[] }>('PUT', `${version}/${resource}`, {
+            body,
+            params,
+          });
+
+          return id ? (updated.data ?? [])[0] : updated.data;
         }
-        const body = id ? [{ ...(input as Record<string, unknown>), id: numeric(id) }] : input;
-        const res = await bc.request('PUT', `${version}/${resource}`, { body, params }) as { data: unknown[] };
-        return id ? (res.data ?? [])[0] : res.data;
-      }
-      const target = singleton ? resource : `${resource}/${id}`;
-      const res = await bc.request('PUT', `${version}/${target}`, { body: input, params });
-      return isEnveloped(style) ? (res as { data: unknown }).data : res;
-    }, data => {
-      success(singleton ? `${spec.describe} updated` : `${spec.idLabel ?? spec.name} ${id ?? ''} updated`.trim());
-      print(data, opts.output, spec.fields);
-    });
+
+        const target = singleton ? resource : `${resource}/${id}`;
+        const res: { data?: unknown } = await bc.request('PUT', `${version}/${target}`, {
+          body: input,
+          params,
+        });
+
+        return isEnveloped(style) ? (res as { data: unknown }).data : res;
+      },
+      (data) => {
+        success(
+          singleton
+            ? `${spec.describe} updated`
+            : `${spec.idLabel ?? spec.name} ${id ?? ''} updated`.trim(),
+        );
+        print(data, opts.output, spec.fields);
+      },
+    );
   });
 }
 
-function registerDelete(parent: Command, spec: ResourceSpec): void {
-  const style = spec.style as Style;
+function registerDelete(parent: Command, spec: AddressableSpec): void {
+  const { style } = spec;
   const version = versionOf(style);
-  const path = spec.path as string;
+  const { path } = spec;
 
   const cmd = parent
     .command('delete')
     .description(`Delete ${spec.idLabel ?? spec.name}`)
     .argument('<id>', `${spec.idLabel ?? spec.name} ID (comma-separated for batch resources)`);
+
   addPathOpts(cmd, path);
 
   addOpts(cmd).action(async (id: string, opts: BaseOpts) => {
-    await run(`Deleting ${spec.name}...`, async () => {
-      const bc = client(opts.profile);
-      const resource = fill(path, opts);
-      if (style === 'v3-batch') {
-        return bc.del(version, resource, { [spec.deleteQuery ?? 'id:in']: id });
-      }
-      return bc.del(version, `${resource}/${id}`);
-    }, () => success(`${spec.idLabel ?? spec.name} ${id} deleted`));
+    await run(
+      `Deleting ${spec.name}...`,
+      async () => {
+        const bc = createClient(opts.profile);
+        const resource = fill(path, opts);
+
+        if (style === 'v3-batch') {
+          return bc.del(version, resource, { [spec.deleteQuery ?? 'id:in']: id });
+        }
+
+        return bc.del(version, `${resource}/${id}`);
+      },
+      () => success(`${spec.idLabel ?? spec.name} ${id} deleted`),
+    );
   });
 }
 
@@ -328,45 +464,68 @@ function registerDelete(parent: Command, spec: ResourceSpec): void {
  * Collection-level DELETE. These endpoints wipe every row when called bare, so
  * an unfiltered call has to be confirmed explicitly.
  */
-function registerDeleteMany(parent: Command, spec: ResourceSpec): void {
-  const style = spec.style as Style;
+function registerDeleteMany(parent: Command, spec: AddressableSpec): void {
+  const { style } = spec;
   const version = versionOf(style);
-  const path = spec.path as string;
+  const { path } = spec;
 
   const cmd = parent
     .command('delete-many')
     .description(`Delete ${spec.describe.toLowerCase()} in bulk`)
-    .option('--query <k=v>', 'filter to delete by (repeatable)', collectPairs, {} as Record<string, string>)
+    .option('--query <k=v>', 'filter to delete by (repeatable)', collectPairs, emptyPairs())
     .option('--yes', 'confirm deleting every record when no filter is given');
+
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
 
   addOpts(cmd).action(async (opts: BaseOpts & { query: Record<string, string>; yes?: boolean }) => {
     const params = { ...collectParams(spec.params, opts), ...opts.query };
+
     if (Object.keys(params).length === 0 && !opts.yes) {
-      errorOut(`This deletes every ${spec.idLabel ?? spec.name} in the store. Narrow it with --query <k=v>, or pass --yes.`);
+      errorOut(
+        `This deletes all ${spec.describe.toLowerCase()} in the store. Narrow it with --query <k=v>, or pass --yes.`,
+      );
+
       return;
     }
-    await run(`Deleting ${spec.name}...`, async () => {
-      const bc = client(opts.profile);
-      return bc.del(version, fill(path, opts), params);
-    }, () => success(`Deleted ${spec.name} matching ${JSON.stringify(params)}`));
+
+    await run(
+      `Deleting ${spec.name}...`,
+      async () => {
+        const bc = createClient(opts.profile);
+
+        return bc.del(version, fill(path, opts), params);
+      },
+      () => success(`Deleted ${spec.name} matching ${JSON.stringify(params)}`),
+    );
   });
 }
 
 function registerAction(parent: Command, spec: ResourceSpec, action: ActionSpec): void {
   const args = action.args ?? [];
   const cmd = parent.command(action.name).description(action.describe);
-  for (const a of args) cmd.argument(`<${a.replace(/_/g, '-')}>`, label(a));
+
+  for (const a of args) {
+    cmd.argument(`<${a.replace(/_/g, '-')}>`, label(a));
+  }
+
   addPathOpts(cmd, action.path, args);
   addParamOpts(cmd, action.params);
+
   if (action.body) {
-    cmd.option('--data <json>', 'request body as JSON').option('--file <path>', 'path to a JSON file');
+    cmd
+      .option('--data <json>', 'request body as JSON')
+      .option('--file <path>', 'path to a JSON file');
   }
+
   if (action.upload) {
     cmd.option('--file <path>', 'local image file to upload');
-    if (action.upload.urlField) cmd.option('--url <url>', 'publicly reachable image URL');
+
+    if (action.upload.urlField) {
+      cmd.option('--url <url>', 'publicly reachable image URL');
+    }
   }
+
   if (action.download) {
     cmd.requiredOption('--out <path>', 'file to write the response to');
   }
@@ -374,52 +533,81 @@ function registerAction(parent: Command, spec: ResourceSpec, action: ActionSpec)
   addOpts(cmd).action(async (...argv: unknown[]) => {
     const opts = argv[args.length] as BaseOpts & { data?: string; file?: string };
     const positional: Record<string, unknown> = {};
+
     args.forEach((name, i) => {
       positional[propName(name)] = argv[i];
     });
 
-    await run(`${action.name}...`, async () => {
-      const bc = client(opts.profile);
-      const pathname = fill(action.path, { ...opts, ...positional });
-      const params = collectParams(action.params, opts);
+    await run(
+      `${action.name}...`,
+      async () => {
+        const bc = createClient(opts.profile);
+        const pathname = fill(action.path, { ...opts, ...positional });
+        const params = collectParams(action.params, opts);
 
-      if (action.download) {
-        const out = (opts as unknown as { out: string }).out;
-        await bc.download(pathname, out);
-        return { file: out };
-      }
+        if (action.download) {
+          const out = (opts as unknown as { out: string }).out;
 
-      if (action.upload) {
-        const { field, urlField } = action.upload;
-        const file = (opts as unknown as { file?: string }).file;
-        const url = (opts as unknown as { url?: string }).url;
-        if (file) {
-          return bc.requestMultipart(action.method === 'PUT' ? 'PUT' : 'POST', pathname, {
-            [field]: { filePath: file },
-          });
+          await bc.download(pathname, out);
+
+          return { file: out };
         }
-        if (url && urlField) {
-          return bc.request(action.method, pathname, { body: { [urlField]: url }, params });
-        }
-        throw new Error(urlField ? 'Provide --file <path> or --url <url>' : 'Provide --file <path>');
-      }
 
-      const body = action.body ? parseInput(opts) : undefined;
-      const res = await bc.request(action.method, pathname, { body, params });
-      const enveloped = action.envelope ?? action.path.startsWith('v3/');
-      return enveloped && res && typeof res === 'object' && 'data' in res
-        ? (res as { data: unknown }).data
-        : res;
-    }, data => {
-      if (action.done) success(action.done);
-      if (data !== null && data !== undefined) print(data, opts.output, action.fields);
-    });
+        if (action.upload) {
+          const { field, urlField } = action.upload;
+          const file = (opts as unknown as { file?: string }).file;
+          const url = (opts as unknown as { url?: string }).url;
+
+          if (file) {
+            return bc.requestMultipart(action.method === 'PUT' ? 'PUT' : 'POST', pathname, {
+              [field]: { filePath: file },
+            });
+          }
+
+          if (url && urlField) {
+            return bc.request(action.method, pathname, { body: { [urlField]: url }, params });
+          }
+
+          throw new Error(
+            urlField ? 'Provide --file <path> or --url <url>' : 'Provide --file <path>',
+          );
+        }
+
+        const body = action.body ? parseInput(opts) : undefined;
+        const res: unknown = await bc.request(action.method, pathname, { body, params });
+        const enveloped = action.envelope ?? action.path.startsWith('v3/');
+
+        if (enveloped && res !== null && typeof res === 'object' && 'data' in res) {
+          return res.data;
+        }
+
+        return res;
+      },
+      (data) => {
+        if (action.done) {
+          success(action.done);
+        }
+
+        if (data !== null && data !== undefined) {
+          print(data, opts.output, action.fields);
+        }
+      },
+    );
   });
+}
+
+/** Commander needs a fresh default object per option registration. */
+function emptyPairs(): Record<string, string> {
+  return {};
 }
 
 function collectPairs(value: string, previous: Record<string, string>): Record<string, string> {
   const index = value.indexOf('=');
-  if (index === -1) throw new Error(`--query expects key=value, got "${value}"`);
+
+  if (index === -1) {
+    throw new Error(`--query expects key=value, got "${value}"`);
+  }
+
   return { ...previous, [value.slice(0, index)]: value.slice(index + 1) };
 }
 
@@ -429,7 +617,7 @@ function numeric(id: string): string | number {
 
 // ── Mounting ────────────────────────────────────────────────────────────────
 
-const BUILDERS: Record<Op, (parent: Command, spec: ResourceSpec) => void> = {
+const BUILDERS: Record<Op, (parent: Command, spec: AddressableSpec) => void> = {
   list: registerList,
   get: registerGet,
   create: registerCreate,
@@ -444,22 +632,30 @@ const BUILDERS: Record<Op, (parent: Command, spec: ResourceSpec) => void> = {
  * and only extended with the operations and children it doesn't already have.
  */
 export function mount(parent: Command, spec: ResourceSpec): Command {
-  const existing = parent.commands.find(c => c.name() === spec.name);
+  const existing = parent.commands.find((c) => c.name() === spec.name);
   const cmd = existing ?? parent.command(spec.name).description(spec.describe);
 
-  if (spec.path && spec.style) {
+  if (isAddressable(spec)) {
     for (const op of spec.ops ?? defaultOps(spec.style)) {
-      if (cmd.commands.some(c => c.name() === op)) continue;
+      if (cmd.commands.some((c) => c.name() === op)) {
+        continue;
+      }
+
       BUILDERS[op](cmd, spec);
     }
   }
 
   for (const action of spec.actions ?? []) {
-    if (cmd.commands.some(c => c.name() === action.name)) continue;
+    if (cmd.commands.some((c) => c.name() === action.name)) {
+      continue;
+    }
+
     registerAction(cmd, spec, action);
   }
 
-  for (const child of spec.children ?? []) mount(cmd, child);
+  for (const child of spec.children ?? []) {
+    mount(cmd, child);
+  }
 
   return cmd;
 }
@@ -470,14 +666,27 @@ export function mount(parent: Command, spec: ResourceSpec): Command {
  */
 export function queryOption(cmd: Command, params: string[] = []): Command {
   addParamOpts(cmd, params);
-  return cmd.option('--query <k=v>', 'extra query parameter (repeatable)', collectPairs, {} as Record<string, string>);
+
+  return cmd.option(
+    '--query <k=v>',
+    'extra query parameter (repeatable)',
+    collectPairs,
+    emptyPairs(),
+  );
 }
 
 /** The counterpart to `queryOption`: reads those options back into a query object. */
-export function queryParams(opts: Record<string, unknown>, params: string[] = []): Record<string, unknown> {
-  return { ...collectParams(params, opts), ...((opts.query as Record<string, string>) ?? {}) };
+export function queryParams(
+  opts: Record<string, unknown>,
+  params: string[] = [],
+): Record<string, unknown> {
+  const extra = (opts.query ?? {}) as Record<string, string>;
+
+  return { ...collectParams(params, opts), ...extra };
 }
 
 export function mountAll(program: Command, specs: ResourceSpec[]): void {
-  for (const spec of specs) mount(program, spec);
+  for (const spec of specs) {
+    mount(program, spec);
+  }
 }

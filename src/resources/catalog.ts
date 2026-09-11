@@ -1,11 +1,36 @@
 import { ResourceSpec } from '../resource';
+
 import { metafields } from './metafields';
 
-const PRODUCT_FIELDS = ['id', 'name', 'sku', 'type', 'price', 'availability', 'inventory_level', 'is_visible'];
+const PRODUCT_FIELDS = [
+  'id',
+  'name',
+  'sku',
+  'type',
+  'price',
+  'availability',
+  'inventory_level',
+  'is_visible',
+];
 const CATEGORY_FIELDS = ['id', 'name', 'parent_id', 'tree_id', 'sort_order', 'is_visible'];
 const BRAND_FIELDS = ['id', 'name', 'page_title'];
-const VARIANT_FIELDS = ['id', 'product_id', 'sku', 'price', 'cost_price', 'weight', 'inventory_level'];
-const IMAGE_FIELDS = ['id', 'product_id', 'is_thumbnail', 'sort_order', 'description', 'url_thumbnail'];
+const VARIANT_FIELDS = [
+  'id',
+  'product_id',
+  'sku',
+  'price',
+  'cost_price',
+  'weight',
+  'inventory_level',
+];
+const IMAGE_FIELDS = [
+  'id',
+  'product_id',
+  'is_thumbnail',
+  'sort_order',
+  'description',
+  'url_thumbnail',
+];
 
 const PRODUCT = 'catalog/products/{product_id}';
 
@@ -20,7 +45,20 @@ export const CATALOG: ResourceSpec = {
       style: 'v3-item',
       idLabel: 'product',
       fields: PRODUCT_FIELDS,
-      params: ['name', 'sku', 'type', 'keyword', 'brand_id', 'categories', 'availability', 'is_visible', 'include', 'include_fields', 'sort', 'direction'],
+      params: [
+        'name',
+        'sku',
+        'type',
+        'keyword',
+        'brand_id',
+        'categories',
+        'availability',
+        'is_visible',
+        'include',
+        'include_fields',
+        'sort',
+        'direction',
+      ],
       ops: ['list', 'get', 'create', 'update', 'delete', 'delete-many'],
       actions: [
         {

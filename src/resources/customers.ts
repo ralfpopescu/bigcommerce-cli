@@ -1,8 +1,27 @@
 import { ResourceSpec } from '../resource';
-import { metafields, batchMetafields } from './metafields';
 
-const CUSTOMER_FIELDS = ['id', 'first_name', 'last_name', 'email', 'company', 'phone', 'customer_group_id', 'date_created'];
-const ADDRESS_FIELDS = ['id', 'customer_id', 'first_name', 'last_name', 'city', 'state_or_province', 'country_code', 'postal_code'];
+import { batchMetafields, metafields } from './metafields';
+
+const CUSTOMER_FIELDS = [
+  'id',
+  'first_name',
+  'last_name',
+  'email',
+  'company',
+  'phone',
+  'customer_group_id',
+  'date_created',
+];
+const ADDRESS_FIELDS = [
+  'id',
+  'customer_id',
+  'first_name',
+  'last_name',
+  'city',
+  'state_or_province',
+  'country_code',
+  'postal_code',
+];
 
 export const CUSTOMERS: ResourceSpec = {
   name: 'customers',
@@ -11,7 +30,14 @@ export const CUSTOMERS: ResourceSpec = {
   style: 'v3-batch',
   idLabel: 'customer',
   fields: CUSTOMER_FIELDS,
-  params: ['email:in', 'name:like', 'company:in', 'customer_group_id:in', 'date_created:min', 'include'],
+  params: [
+    'email:in',
+    'name:like',
+    'company:in',
+    'customer_group_id:in',
+    'date_created:min',
+    'include',
+  ],
   actions: [
     {
       name: 'validate-credentials',
@@ -164,7 +190,16 @@ export const SUBSCRIBERS: ResourceSpec = {
   style: 'v3-item',
   idLabel: 'subscriber',
   ops: ['list', 'get', 'create', 'update', 'delete', 'delete-many'],
-  fields: ['id', 'email', 'first_name', 'last_name', 'source', 'order_id', 'channel_id', 'date_created'],
+  fields: [
+    'id',
+    'email',
+    'first_name',
+    'last_name',
+    'source',
+    'order_id',
+    'channel_id',
+    'date_created',
+  ],
   params: ['email', 'first_name', 'last_name', 'source', 'order_id', 'date_created'],
 };
 

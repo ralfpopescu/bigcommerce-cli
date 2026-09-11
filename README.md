@@ -1,19 +1,23 @@
 # bigc
 
+[![CI](https://github.com/bigcommerce/bigcommerce-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/bigcommerce/bigcommerce-cli/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@bigcommerce/cli.svg)](https://www.npmjs.com/package/@bigcommerce/cli)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.md)
+
 A command-line interface for BigCommerce's REST Management APIs. It covers the
-whole public surface — 632 commands across 605 endpoints — plus the Admin
-GraphQL API and a raw passthrough for anything BigCommerce ships next.
+whole public surface — 805 commands across the REST Management API — plus the
+Admin GraphQL API and a raw passthrough for anything BigCommerce ships next.
 
-> **Unofficial.** This is a personal project. It is not built, maintained, or
-> endorsed by BigCommerce, and it ships with no warranty — see [LICENSE](LICENSE).
-> For official tooling, see [BigCommerce's developer docs](https://developer.bigcommerce.com/).
+> This is a community-supported tool, released under the MIT licence and
+> provided as-is. It is not covered by a BigCommerce support agreement. Issues
+> and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Requires Node 18 or newer.
+Requires Node 22 or newer.
 
 ## Install
 
 ```bash
-npm install -g bigc
+npm install -g @bigcommerce/cli
 ```
 
 Or from a clone, for development:
@@ -21,7 +25,7 @@ Or from a clone, for development:
 ```bash
 npm install
 npm run build
-npm link              # exposes the `bigc` command on your PATH
+npm link                   # exposes the `bigc` command on your PATH
 npm run dev -- <command>   # run without building
 ```
 
@@ -33,7 +37,8 @@ you actually need — this CLI reaches every endpoint your token is allowed to
 reach, including destructive ones.
 
 Credentials are stored at `~/.bc-cli/credentials.json`, organized into named
-profiles. The file is written `0600` inside a `0700` directory.
+profiles. The file is written `0600` inside a `0700` directory. Set
+`BIGC_CONFIG_DIR` to keep them somewhere else.
 
 ```bash
 bigc auth login                       # save the "default" profile, prompting
@@ -139,7 +144,7 @@ command away:
 
 ```bash
 bigc api GET /v3/sites --query 'limit=50'
-bigc api PUT /v3/channels/1894133 --data '{"status":"active"}'
+bigc api PUT /v3/channels/1000001 --data '{"status":"active"}'
 bigc api POST /v3/catalog/categories --file category.json
 ```
 
@@ -163,8 +168,8 @@ bigc graphql --file query.graphql --variables '{"id":329}'
 Common filters also have named options, so these are equivalent:
 
 ```bash
-bigc catalog products list --sku autochoir-2
-bigc catalog products list --query 'sku=autochoir-2'
+bigc catalog products list --sku EXAMPLE-SKU
+bigc catalog products list --query 'sku=EXAMPLE-SKU'
 ```
 
 ## Things worth knowing
@@ -211,16 +216,37 @@ Adding a new endpoint is usually a few lines in `src/resources/`.
 
 ```
 src/
-├── commands/    hand-written commands: auth, api, graphql, and the
-│                multipart uploads under catalog/orders/customers/
-│                channels/inventory
-├── resources/   declarative specs for the rest of the API surface
-├── resource.ts  turns a spec into commander commands
-├── api/         HTTP client: auth, rate limits, pagination, multipart
-├── config.ts    credential file read/write
-├── output.ts    json/table/pretty formatters
-└── index.ts     entry point
+├── commands/       hand-written commands: auth, api, graphql, and the
+│                   multipart uploads under catalog/orders/customers/
+│                   channels/inventory
+├── resources/      declarative specs for the rest of the API surface
+├── resource.ts     turns a spec into commander commands
+├── api/
+│   ├── client.ts   HTTP client: auth, rate limits, pagination, multipart
+│   └── factory.ts  builds a client from a credential profile
+├── config.ts       credential file read/write
+├── output.ts       json/table/pretty formatters
+└── index.ts        entry point
+
+test/               mirrors src/; no test makes a network call
 ```
+
+## Development
+
+```bash
+npm install
+npm test             # run the suite
+npm run test:watch   # watch mode
+npm run lint         # ESLint, using @bigcommerce/eslint-config
+npm run typecheck    # tsc --noEmit
+npm run build        # compile to dist/
+```
+
+The test suite stubs the HTTP layer end to end, so it needs no credentials and
+makes no network calls. Coverage is enforced at 70%; CI fails below it.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add an endpoint, what counts
+as a breaking change, and the release process.
 
 ## References
 
@@ -231,6 +257,38 @@ src/
 - [OpenAPI specs](https://github.com/bigcommerce/api-specs)
 - [Rate limits](https://developer.bigcommerce.com/docs/start/best-practices/api-rate-limits)
 
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md). Please don't open a
+public issue for a security problem.
+
+## Contributing
+
+Bug reports, documentation fixes, and new endpoint coverage are all welcome. See
+[CONTRIBUTING.md](CONTRIBUTING.md) and the
+[Code of Conduct](CODE_OF_CONDUCT.md). Release history lives in
+[CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
-MIT
+MIT License
+
+Copyright (c) 2026 BigCommerce, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

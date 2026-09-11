@@ -12,7 +12,11 @@ export const SETTINGS: ResourceSpec = {
     setting('catalog', 'Catalog settings', 'settings/catalog'),
     setting('email-statuses', 'Transactional email statuses', 'settings/email-statuses'),
     setting('inventory', 'Inventory settings', 'settings/inventory'),
-    setting('inventory-notifications', 'Inventory notification settings', 'settings/inventory/notifications'),
+    setting(
+      'inventory-notifications',
+      'Inventory notification settings',
+      'settings/inventory/notifications',
+    ),
     setting('logo', 'Storefront logo', 'settings/logo'),
     setting('locale', 'Store locale', 'settings/store/locale'),
     setting('profile', 'Store profile', 'settings/store/profile'),
@@ -23,7 +27,11 @@ export const SETTINGS: ResourceSpec = {
     setting('search', 'Storefront search settings', 'settings/storefront/search'),
     setting('security', 'Storefront security settings', 'settings/storefront/security'),
     setting('seo', 'Storefront SEO settings', 'settings/storefront/seo'),
-    setting('status', 'Storefront status — the maintenance switch’s messages', 'settings/storefront/status'),
+    setting(
+      'status',
+      'Storefront status — the maintenance switch’s messages',
+      'settings/storefront/status',
+    ),
     {
       name: 'analytics',
       describe: 'Web analytics providers',

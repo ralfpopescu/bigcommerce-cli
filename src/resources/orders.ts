@@ -1,7 +1,17 @@
 import { ResourceSpec } from '../resource';
+
 import { metafields } from './metafields';
 
-const ORDER_FIELDS = ['id', 'status', 'customer_id', 'date_created', 'total_inc_tax', 'currency_code', 'payment_method', 'items_total'];
+const ORDER_FIELDS = [
+  'id',
+  'status',
+  'customer_id',
+  'date_created',
+  'total_inc_tax',
+  'currency_code',
+  'payment_method',
+  'items_total',
+];
 const ORDER = 'orders/{order_id}';
 
 export const ORDERS: ResourceSpec = {
@@ -12,7 +22,18 @@ export const ORDERS: ResourceSpec = {
   idLabel: 'order',
   ops: ['list', 'get', 'create', 'update', 'delete', 'delete-many'],
   fields: ORDER_FIELDS,
-  params: ['status_id', 'customer_id', 'email', 'min_date_created', 'max_date_created', 'min_id', 'max_id', 'is_deleted', 'channel_id', 'sort'],
+  params: [
+    'status_id',
+    'customer_id',
+    'email',
+    'min_date_created',
+    'max_date_created',
+    'min_id',
+    'max_id',
+    'is_deleted',
+    'channel_id',
+    'sort',
+  ],
   actions: [
     {
       name: 'count',
@@ -100,7 +121,16 @@ export const ORDERS: ResourceSpec = {
       style: 'v2-item',
       ops: ['list', 'get', 'update'],
       idLabel: 'shipping address',
-      fields: ['id', 'first_name', 'last_name', 'city', 'state', 'country', 'zip', 'shipping_method'],
+      fields: [
+        'id',
+        'first_name',
+        'last_name',
+        'city',
+        'state',
+        'country',
+        'zip',
+        'shipping_method',
+      ],
       children: [
         {
           name: 'quotes',
@@ -118,7 +148,14 @@ export const ORDERS: ResourceSpec = {
       style: 'v2-item',
       idLabel: 'shipment',
       ops: ['list', 'get', 'create', 'update', 'delete', 'delete-many'],
-      fields: ['id', 'order_id', 'tracking_number', 'shipping_method', 'shipping_provider', 'date_created'],
+      fields: [
+        'id',
+        'order_id',
+        'tracking_number',
+        'shipping_method',
+        'shipping_provider',
+        'date_created',
+      ],
       actions: [
         {
           name: 'count',
@@ -218,7 +255,13 @@ export const PICKUP: ResourceSpec = {
       path: 'pickup/methods',
       style: 'v3-batch',
       idLabel: 'pickup method',
-      fields: ['id', 'location_id', 'display_name', 'collection_instructions', 'collection_time_description'],
+      fields: [
+        'id',
+        'location_id',
+        'display_name',
+        'collection_instructions',
+        'collection_time_description',
+      ],
       params: ['id:in', 'location_id:in'],
     },
     {
