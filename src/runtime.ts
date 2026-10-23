@@ -14,4 +14,6 @@ export const runtime = {
   ndjson: false,
   /** Set once fetchAll has streamed records, so the final print is skipped. */
   streamed: false,
+  /** --concurrency: pages fetched at once by V3 --all. 1 keeps it sequential. */
+  concurrency: 1,
 };

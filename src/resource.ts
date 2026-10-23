@@ -167,7 +167,8 @@ function registerList(parent: Command, spec: ResourceSpec): void {
       .option('--page <n>', 'page number')
       .option('--limit <n>', 'results per page (max 250)')
       .option('--all', 'fetch all pages')
-        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive');
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)');
   }
   cmd.option('--query <k=v>', 'extra query parameter (repeatable)', collectPairs, {} as Record<string, string>);
 

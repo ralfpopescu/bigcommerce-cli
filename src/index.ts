@@ -84,7 +84,7 @@ program
 
 program.hook('preAction', (_root, action) => {
   // optsWithGlobals: a subcommand like `graphql schema` shares options with its parent.
-  const opts = action.optsWithGlobals() as { output?: unknown; dryRun?: boolean; ndjson?: boolean };
+  const opts = action.optsWithGlobals() as { output?: unknown; dryRun?: boolean; ndjson?: boolean; concurrency?: string };
   runtime.ndjson = Boolean(opts.ndjson);
   // NDJSON is a JSON format; anything else would mix tables into the stream.
   runtime.output = runtime.ndjson ? 'json' : resolveOutput(opts.output, jsonByDefault.has(action));
@@ -92,6 +92,11 @@ program.hook('preAction', (_root, action) => {
     action.setOptionValue('output', runtime.output);
   }
   runtime.dryRun = Boolean(opts.dryRun);
+  if (opts.concurrency !== undefined) {
+    const n = Number(opts.concurrency);
+    if (!Number.isInteger(n) || n < 1 || n > 10) throw new UsageError('--concurrency takes a whole number from 1 to 10');
+    runtime.concurrency = n;
+  }
   if (runtime.output === 'json') chalk.level = 0;
 });
 

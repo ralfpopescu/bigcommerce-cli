@@ -18,7 +18,8 @@ export function registerCustomers(program: Command): void {
         .option('--page <n>', 'page number', '1')
         .option('--limit <n>', 'results per page (max 250)', '50')
         .option('--all', 'fetch all pages')
-        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)'),
       paramsFor('customers')
     )
   ).action(async (opts: { page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {

@@ -297,6 +297,7 @@ bigc storefront graphql schema --out storefront-schema.json --mint
 | `--data <json>` / `--file <path>` | Request body, inline or from a file |
 | `--dry-run` | On any command that writes: print the request, send nothing |
 | `--ndjson` | One JSON record per line; streams with `--all` |
+| `--concurrency <n>` | With `--all` on V3 lists: fetch up to n pages at once (1–10, default 1); output order is unchanged |
 
 Common filters also have named options, so these are equivalent:
 
@@ -340,7 +341,9 @@ bigc catalog products list --query 'sku=autochoir-2'
 - **Write guards**: `--dry-run` and read-only mode are enforced in the HTTP
   client, in front of every request
 - **Pagination**: `--all` follows V3's `meta.pagination` and V2's empty-array
-  terminator
+  terminator. With `--concurrency`, V3 pages after the first are fetched in
+  parallel, throttled by `X-Rate-Limit-Requests-Left`; V2 has no page count,
+  so it stays sequential
 
 Most of the surface is declared rather than written out. `src/resources/`
 describes each endpoint — its path, style, table columns, and filters — and

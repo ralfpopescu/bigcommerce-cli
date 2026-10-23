@@ -15,7 +15,8 @@ export function registerChannels(program: Command): void {
         .command('list')
         .description('List channels')
         .option('--all', 'fetch all pages')
-        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)'),
       paramsFor('channels')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {

@@ -73,6 +73,8 @@ function toQuery(params?: Record<string, unknown>): string {
 
 export class ApiClient {
   private readOnly: boolean;
+  /** From the last response's X-Rate-Limit-Requests-Left, when it had one. */
+  private requestsLeft?: number;
 
   constructor(private storeHash: string, private accessToken: string, opts: { readOnly?: boolean } = {}) {
     this.readOnly = Boolean(opts.readOnly) || envReadOnly();
@@ -182,6 +184,8 @@ export class ApiClient {
   private async fetchRetrying(url: string, init: () => Parameters<typeof fetch>[1]): Promise<Response> {
     for (let attempt = 0; ; attempt++) {
       const res = await fetch(url, init());
+      const left = res.headers.get('X-Rate-Limit-Requests-Left');
+      if (left !== null && !Number.isNaN(Number(left))) this.requestsLeft = Number(left);
       if (res.status !== 429 || attempt >= MAX_RETRIES) return res;
       const wait = parseInt(res.headers.get('X-Rate-Limit-Time-Reset-Ms') ?? '5000', 10);
       await new Promise(r => setTimeout(r, wait));
@@ -349,17 +353,39 @@ export class ApiClient {
     });
   }
 
-  /** Yields each page of a V3 collection ({ data: T[], meta: { pagination } }). */
+  /**
+   * Yields each page of a V3 collection ({ data: T[], meta: { pagination } }),
+   * in order. With runtime.concurrency > 1, once page 1 has said how many
+   * pages there are, up to that many later pages are in flight at once —
+   * fewer when X-Rate-Limit-Requests-Left says the window is nearly spent.
+   */
   async *pagesV3(resource: string, params?: Record<string, unknown>): AsyncGenerator<unknown[]> {
-    for (let page = 1; ; page++) {
-      const res = await this.get('v3', resource, { ...params, page, limit: 250 }) as {
-        data: unknown[];
-        meta?: { pagination?: { current_page: number; total_pages: number } };
-      } | null;
+    type Page = { data: unknown[]; meta?: { pagination?: { current_page: number; total_pages: number } } } | null;
+    const fetchPage = (page: number) => this.get('v3', resource, { ...params, page, limit: 250 }) as Promise<Page>;
+
+    const first = await fetchPage(1);
+    yield first?.data ?? [];
+    const total = first?.meta?.pagination?.total_pages ?? 1;
+    if (!first?.meta?.pagination || total <= 1) return;
+
+    const inFlight = new Map<number, Promise<Page>>();
+    let next = 2;
+    for (let page = 2; page <= total; page++) {
+      while (next <= total && inFlight.size < this.allowedConcurrency()) {
+        inFlight.set(next, fetchPage(next));
+        next++;
+      }
+      const res = await inFlight.get(page)!;
+      inFlight.delete(page);
       yield res?.data ?? [];
-      const pg = res?.meta?.pagination;
-      if (!pg || pg.current_page >= pg.total_pages) return;
     }
+  }
+
+  private allowedConcurrency(): number {
+    const wanted = runtime.concurrency;
+    if (wanted <= 1 || this.requestsLeft === undefined) return wanted;
+    // Leave headroom in the rate-limit window rather than run into 429s.
+    return Math.max(1, Math.min(wanted, this.requestsLeft - 2));
   }
 
   /** Yields each page of a V2 collection (plain arrays; empty or short page = done). */

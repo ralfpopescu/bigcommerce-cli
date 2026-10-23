@@ -17,7 +17,8 @@ export function registerInventory(program: Command): void {
         .option('--location-id <id>', 'filter by location ID')
         .option('--product-id <id>', 'filter by product ID')
         .option('--all', 'fetch all pages')
-        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)'),
       paramsFor('inventory', 'items')
     )
   ).action(async (opts: { locationId?: string; productId?: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {

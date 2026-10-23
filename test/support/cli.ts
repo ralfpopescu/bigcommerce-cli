@@ -19,6 +19,8 @@ export interface MockRoute {
   headers?: Record<string, string>;
   /** Answer this many times, then fall through to the next matching route. */
   times?: number;
+  /** Wait this long before answering. */
+  delayMs?: number;
 }
 
 export interface RecordedRequest {
@@ -36,6 +38,9 @@ export interface RecordedRequest {
  */
 export class MockServer {
   requests: RecordedRequest[] = [];
+  /** Most requests that were open at the same moment. */
+  maxConcurrent = 0;
+  private open = 0;
   private routes: (MockRoute & { used: number })[] = [];
   private server = http.createServer((req, res) => this.handle(req, res));
 
@@ -57,6 +62,7 @@ export class MockServer {
   reset(): void {
     this.routes = [];
     this.requests = [];
+    this.maxConcurrent = 0;
   }
 
   close(): Promise<void> {
@@ -64,6 +70,9 @@ export class MockServer {
   }
 
   private handle(req: http.IncomingMessage, res: http.ServerResponse): void {
+    this.open++;
+    this.maxConcurrent = Math.max(this.maxConcurrent, this.open);
+    res.on('finish', () => this.open--);
     const chunks: Buffer[] = [];
     req.on('data', c => chunks.push(c));
     req.on('end', () => {
@@ -89,8 +98,12 @@ export class MockServer {
       }
       route.used++;
       const status = route.status ?? 200;
-      res.writeHead(status, { 'Content-Type': 'application/json', ...route.headers });
-      res.end(status === 204 || route.body === undefined ? undefined : JSON.stringify(route.body));
+      const answer = () => {
+        res.writeHead(status, { 'Content-Type': 'application/json', ...route.headers });
+        res.end(status === 204 || route.body === undefined ? undefined : JSON.stringify(route.body));
+      };
+      if (route.delayMs) setTimeout(answer, route.delayMs);
+      else answer();
     });
   }
 }

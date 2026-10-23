@@ -96,7 +96,8 @@ export function registerCatalog(program: Command): void {
         .option('--page <n>', 'page number', '1')
         .option('--limit <n>', 'results per page (max 250)', '50')
         .option('--all', 'fetch all pages')
-        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)'),
       paramsFor('catalog', 'products')
     )
   ).action(async (opts: { page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -248,6 +249,7 @@ export function registerCatalog(program: Command): void {
       .requiredOption('--product-id <id>', 'product ID')
       .option('--all', 'fetch all pages')
         .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)')
   ).action(async (opts: { productId: string; all?: boolean; output: OutputFormat; profile?: string }) => {
     const spinner = progress('Fetching images...').start();
     try {
@@ -401,7 +403,8 @@ export function registerCatalog(program: Command): void {
         .command('list')
         .description('List categories')
         .option('--all', 'fetch all pages')
-        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)'),
       paramsFor('catalog', 'categories')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -566,7 +569,8 @@ export function registerCatalog(program: Command): void {
         .command('list')
         .description('List brands')
         .option('--all', 'fetch all pages')
-        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)'),
       paramsFor('catalog', 'brands')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -667,6 +671,7 @@ export function registerCatalog(program: Command): void {
         .requiredOption('--product-id <id>', 'product ID')
         .option('--all', 'fetch all pages')
         .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
+        .option('--concurrency <n>', 'with --all on V3 endpoints: fetch up to n pages at once (default 1)')
     )
   ).action(async (opts: { productId: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
     const spinner = progress('Fetching variants...').start();
