@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { print, success, errorOut, progress, OutputFormat } from './output';
 import { client, parseInput, addOpts, fetchAll } from './shared';
 import { CliError, EXIT, UsageError } from './errors';
+import { setMeta } from './meta';
 
 export type Version = 'v2' | 'v3';
 export type Op = 'list' | 'get' | 'create' | 'update' | 'delete' | 'delete-many';
@@ -159,6 +160,8 @@ function registerList(parent: Command, spec: ResourceSpec): void {
   }
   cmd.option('--query <k=v>', 'extra query parameter (repeatable)', collectPairs, {} as Record<string, string>);
 
+  setMeta(cmd, { http: { method: 'GET', path: `/${version}/${path}` } });
+
   addOpts(cmd).action(async (opts: BaseOpts & { page?: string; limit?: string; all?: boolean; query: Record<string, string> }) => {
     await run(`Fetching ${spec.name}...`, async () => {
       const bc = client(opts.profile);
@@ -190,6 +193,8 @@ function registerGet(parent: Command, spec: ResourceSpec): void {
   if (!singleton) cmd.argument('<id>', `${spec.idLabel ?? spec.name} ID`);
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
+
+  setMeta(cmd, { http: { method: 'GET', path: `/${version}/${path}${singleton ? '' : style === 'v3-batch' ? `?${spec.deleteQuery ?? 'id:in'}={id}` : '/{id}'}` } });
 
   addOpts(cmd).action(async (...argv: unknown[]) => {
     const opts = argv[singleton ? 0 : 1] as BaseOpts;
@@ -224,6 +229,8 @@ function registerCreate(parent: Command, spec: ResourceSpec): void {
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
 
+  setMeta(cmd, { http: { method: 'POST', path: `/${version}/${path}` }, body: true });
+
   addOpts(cmd).action(async (opts: BaseOpts & { data?: string; file?: string }) => {
     await run(`Creating ${spec.name}...`, async () => {
       const bc = client(opts.profile);
@@ -255,6 +262,8 @@ function registerUpdate(parent: Command, spec: ResourceSpec): void {
   cmd.option('--data <json>', 'fields to update as JSON').option('--file <path>', 'path to a JSON file');
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
+
+  setMeta(cmd, { http: { method: 'PUT', path: `/${version}/${path}${singleton || batch ? '' : '/{id}'}` }, body: true });
 
   addOpts(cmd).action(async (...argv: unknown[]) => {
     const opts = argv[singleton ? 0 : 1] as BaseOpts & { data?: string; file?: string };
@@ -295,6 +304,8 @@ function registerDelete(parent: Command, spec: ResourceSpec): void {
     .argument('<id>', `${spec.idLabel ?? spec.name} ID (comma-separated for batch resources)`);
   addPathOpts(cmd, path);
 
+  setMeta(cmd, { http: { method: 'DELETE', path: `/${version}/${path}${style === 'v3-batch' ? `?${spec.deleteQuery ?? 'id:in'}={id}` : '/{id}'}` } });
+
   addOpts(cmd).action(async (id: string, opts: BaseOpts) => {
     await run(`Deleting ${spec.name}...`, async () => {
       const bc = client(opts.profile);
@@ -323,6 +334,8 @@ function registerDeleteMany(parent: Command, spec: ResourceSpec): void {
     .option('--yes', 'confirm deleting every record when no filter is given');
   addPathOpts(cmd, path);
   addParamOpts(cmd, spec.params);
+
+  setMeta(cmd, { http: { method: 'DELETE', path: `/${version}/${path}` } });
 
   addOpts(cmd).action(async (opts: BaseOpts & { query: Record<string, string>; yes?: boolean }) => {
     const params = { ...collectParams(spec.params, opts), ...opts.query };
@@ -353,6 +366,12 @@ function registerAction(parent: Command, spec: ResourceSpec, action: ActionSpec)
   if (action.download) {
     cmd.requiredOption('--out <path>', 'file to write the response to');
   }
+
+  setMeta(cmd, {
+    http: { method: action.method, path: `/${action.path}` },
+    body: Boolean(action.body),
+    multipart: Boolean(action.upload),
+  });
 
   addOpts(cmd).action(async (...argv: unknown[]) => {
     const opts = argv[args.length] as BaseOpts & { data?: string; file?: string };

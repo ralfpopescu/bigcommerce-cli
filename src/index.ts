@@ -8,6 +8,7 @@ import { registerCustomers } from './commands/customers';
 import { registerChannels } from './commands/channels';
 import { registerInventory } from './commands/inventory';
 import { registerApi, registerPaymentProcessing } from './commands/api';
+import { registerDiscovery, annotateHandWritten } from './commands/discovery';
 import { mountAll } from './resource';
 import { RESOURCES } from './resources';
 import { runtime } from './runtime';
@@ -109,6 +110,10 @@ mountAll(program, RESOURCES);
 
 const payments = program.commands.find(c => c.name() === 'payments');
 if (payments) registerPaymentProcessing(payments);
+
+// Last, so the catalog sees every command registered above.
+registerDiscovery(program);
+annotateHandWritten(program);
 
 program.parseAsync(process.argv).catch(err => {
   if (err instanceof CommanderError) {
