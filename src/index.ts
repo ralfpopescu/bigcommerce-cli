@@ -8,7 +8,7 @@ import { registerCustomers } from './commands/customers';
 import { registerChannels } from './commands/channels';
 import { registerInventory } from './commands/inventory';
 import { registerApi, registerPaymentProcessing } from './commands/api';
-import { registerDiscovery, annotateHandWritten } from './commands/discovery';
+import { registerDiscovery, finalizeCommands } from './commands/discovery';
 import { mountAll } from './resource';
 import { RESOURCES } from './resources';
 import { runtime } from './runtime';
@@ -113,7 +113,7 @@ if (payments) registerPaymentProcessing(payments);
 
 // Last, so the catalog sees every command registered above.
 registerDiscovery(program);
-annotateHandWritten(program);
+finalizeCommands(program);
 
 program.parseAsync(process.argv).catch(err => {
   if (err instanceof CommanderError) {

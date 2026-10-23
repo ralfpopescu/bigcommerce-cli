@@ -56,11 +56,19 @@ function matches(e: CommandEntry, filter: string): boolean {
   return [e.command, e.description, e.http?.path ?? ''].some(s => s.toLowerCase().includes(f));
 }
 
-/** Copies the HAND_WRITTEN table onto the commands it describes. */
-export function annotateHandWritten(program: Command): void {
+/**
+ * Runs once everything is registered: copies the HAND_WRITTEN table onto the
+ * commands it describes, then gives every command that can write a
+ * --dry-run flag. Doing it here, from the metadata, means a new mutating
+ * command gets the flag without anyone remembering to add it.
+ */
+export function finalizeCommands(program: Command): void {
   for (const cmd of leaves(program)) {
     const meta = HAND_WRITTEN[commandPath(cmd)];
     if (meta) setMeta(cmd, meta);
+    if (isMutating(getMeta(cmd))) {
+      cmd.option('--dry-run', 'print the request that would be sent, and send nothing');
+    }
   }
 }
 

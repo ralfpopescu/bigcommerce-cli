@@ -1,10 +1,10 @@
 import * as fs from 'fs';
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { ApiClient, MultipartField } from '../api/client';
+import { ApiClient, DryRunStop, MultipartField } from '../api/client';
 import { print, success, errorOut, OutputFormat, progress } from '../output';
 import { client, parseInput, addOpts, fetchAll } from '../shared';
-import { UsageError } from '../errors';
+import { CliError, UsageError } from '../errors';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
 
@@ -47,6 +47,7 @@ async function uploadProductImages(
       });
       uploaded++;
     } catch (e) {
+      if (stopsTheCommand(e)) throw e;
       failures.push({ source: filePath, error: (e as Error).message });
     }
   }
@@ -56,11 +57,21 @@ async function uploadProductImages(
       await bc.post('v3', `catalog/products/${productId}/images`, { image_url: url });
       uploaded++;
     } catch (e) {
+      if (stopsTheCommand(e)) throw e;
       failures.push({ source: url, error: (e as Error).message });
     }
   }
 
   return { uploaded, failures };
+}
+
+/**
+ * Image uploads are best-effort — one bad file shouldn't sink the rest — but a
+ * dry run or a read-only refusal has to end the command, not be counted as a
+ * failed upload.
+ */
+function stopsTheCommand(e: unknown): boolean {
+  return e instanceof DryRunStop || e instanceof CliError;
 }
 
 function reportImageResult(result: { uploaded: number; failures: { source: string; error: string }[] }): void {
