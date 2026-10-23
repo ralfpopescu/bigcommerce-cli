@@ -136,7 +136,7 @@ export const THEMES: ResourceSpec = {
       describe: 'Upload a theme .zip',
       method: 'POST',
       path: 'v3/themes',
-      upload: { field: 'file' },
+      upload: { field: 'file', describe: 'local theme .zip to upload' },
       done: 'Theme upload queued',
     },
     {

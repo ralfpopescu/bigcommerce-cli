@@ -344,10 +344,12 @@ export const WEBHOOKS: ResourceSpec = {
   idLabel: 'webhook',
   fields: ['id', 'scope', 'destination', 'is_active', 'created_at', 'updated_at'],
   params: ['scope', 'destination', 'is_active'],
+  // Those are list filters; on create/update the fields go in --data.
+  writeParams: [],
   actions: [
     {
       name: 'events',
-      describe: 'List webhook events awaiting delivery',
+      describe: 'List webhook events awaiting delivery (deprecated by BigCommerce)',
       method: 'GET',
       path: 'v3/hooks/events',
       params: ['scope', 'created_at:min', 'created_at:max'],

@@ -27,6 +27,8 @@ export function batchMetafields(path: string, deleteQuery = 'id:in'): ResourceSp
     style: 'v3-batch',
     idLabel: 'metafield',
     deleteQuery,
+    // The batch metafield DELETE takes a JSON array of IDs as its body.
+    deleteBody: true,
     fields: METAFIELD_FIELDS,
     params: ['key', 'namespace', 'resource_id:in'],
   };

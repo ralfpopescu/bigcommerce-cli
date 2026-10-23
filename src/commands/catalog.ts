@@ -445,7 +445,7 @@ export function registerCatalog(program: Command): void {
   addOpts(
     categories
       .command('create')
-      .description('Create a category (requires name, tree_id, parent_id)')
+      .description('Create a category (needs name, plus tree_id or parent_id)')
       .option('--data <json>', 'category JSON (object or array)')
       .option('--file <path>', 'path to JSON file')
   ).action(async (opts: { data?: string; file?: string; output: OutputFormat; profile?: string }) => {

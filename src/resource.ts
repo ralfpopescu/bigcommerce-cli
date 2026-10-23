@@ -4,6 +4,7 @@ import { print, success, errorOut, progress, OutputFormat } from './output';
 import { client, parseInput, addOpts, fetchAll } from './shared';
 import { CliError, EXIT, UsageError } from './errors';
 import { setMeta } from './meta';
+import { runtime } from './runtime';
 
 export type Version = 'v2' | 'v3';
 export type Op = 'list' | 'get' | 'create' | 'update' | 'delete' | 'delete-many';
@@ -35,7 +36,7 @@ export interface ActionSpec {
   fields?: string[];
   done?: string;
   /** Multipart upload: --file is sent as `field`, --url (if `urlField`) as JSON. */
-  upload?: { field: string; urlField?: string };
+  upload?: { field: string; urlField?: string; describe?: string };
   /** Streams the response to --out instead of printing it. */
   download?: boolean;
 }
@@ -55,6 +56,16 @@ export interface ResourceSpec {
   deleteQuery?: string;
   /** Set false for endpoints that ignore page/limit. */
   paginate?: boolean;
+  /**
+   * Filters the collection DELETE honours, as named options on delete-many.
+   * Defaults to `params`. An empty array means the endpoint takes no filters
+   * at all, so delete-many always hits every record and always needs --yes.
+   */
+  deleteManyFilters?: string[];
+  /** v3-batch: send the IDs as a JSON array body rather than as `deleteQuery`. */
+  deleteBody?: boolean;
+  /** Query parameters for create/update. Defaults to `params`, which are often list-only filters. */
+  writeParams?: string[];
   children?: ResourceSpec[];
   actions?: ActionSpec[];
 }
@@ -227,7 +238,7 @@ function registerCreate(parent: Command, spec: ResourceSpec): void {
     .option('--data <json>', 'request body as JSON')
     .option('--file <path>', 'path to a JSON file');
   addPathOpts(cmd, path);
-  addParamOpts(cmd, spec.params);
+  addParamOpts(cmd, spec.writeParams ?? spec.params);
 
   setMeta(cmd, { http: { method: 'POST', path: `/${version}/${path}` }, body: true });
 
@@ -239,7 +250,7 @@ function registerCreate(parent: Command, spec: ResourceSpec): void {
       const body = style === 'v3-batch' && !Array.isArray(input) ? [input] : input;
       const res = await bc.request('POST', `${version}/${resource}`, {
         body,
-        params: collectParams(spec.params, opts),
+        params: collectParams(spec.writeParams ?? spec.params, opts),
       });
       return isEnveloped(style) ? (res as { data: unknown }).data : res;
     }, data => {
@@ -261,7 +272,7 @@ function registerUpdate(parent: Command, spec: ResourceSpec): void {
   else if (!singleton) cmd.argument('<id>', `${spec.idLabel ?? spec.name} ID`);
   cmd.option('--data <json>', 'fields to update as JSON').option('--file <path>', 'path to a JSON file');
   addPathOpts(cmd, path);
-  addParamOpts(cmd, spec.params);
+  addParamOpts(cmd, spec.writeParams ?? spec.params);
 
   setMeta(cmd, { http: { method: 'PUT', path: `/${version}/${path}${singleton || batch ? '' : '/{id}'}` }, body: true });
 
@@ -273,7 +284,7 @@ function registerUpdate(parent: Command, spec: ResourceSpec): void {
       const resource = fill(path, opts);
       const input = parseInput(opts);
 
-      const params = collectParams(spec.params, opts);
+      const params = collectParams(spec.writeParams ?? spec.params, opts);
 
       if (batch) {
         if (!id && !Array.isArray(input)) {
@@ -303,15 +314,26 @@ function registerDelete(parent: Command, spec: ResourceSpec): void {
     .description(`Delete ${spec.idLabel ?? spec.name}`)
     .argument('<id>', `${spec.idLabel ?? spec.name} ID (comma-separated for batch resources)`);
   addPathOpts(cmd, path);
+  const batch = style === 'v3-batch';
+  if (batch && !spec.deleteBody) {
+    // e.g. channel-assignments: without channel_id:in, deleting by product
+    // removes the product from every channel.
+    cmd.option('--query <k=v>', 'extra filter to narrow the delete (repeatable)', collectPairs, {} as Record<string, string>);
+  }
 
-  setMeta(cmd, { http: { method: 'DELETE', path: `/${version}/${path}${style === 'v3-batch' ? `?${spec.deleteQuery ?? 'id:in'}={id}` : '/{id}'}` } });
+  const target = !batch ? '/{id}' : spec.deleteBody ? '' : `?${spec.deleteQuery ?? 'id:in'}={id}`;
+  setMeta(cmd, { http: { method: 'DELETE', path: `/${version}/${path}${target}` }, body: Boolean(spec.deleteBody) });
 
-  addOpts(cmd).action(async (id: string, opts: BaseOpts) => {
+  addOpts(cmd).action(async (id: string, opts: BaseOpts & { query?: Record<string, string> }) => {
     await run(`Deleting ${spec.name}...`, async () => {
       const bc = client(opts.profile);
       const resource = fill(path, opts);
-      if (style === 'v3-batch') {
-        return bc.del(version, resource, { [spec.deleteQuery ?? 'id:in']: id });
+      if (batch && spec.deleteBody) {
+        const ids = id.split(',').map(s => numeric(s.trim()));
+        return bc.request('DELETE', `${version}/${resource}`, { body: ids });
+      }
+      if (batch) {
+        return bc.del(version, resource, { ...opts.query, [spec.deleteQuery ?? 'id:in']: id });
       }
       return bc.del(version, `${resource}/${id}`);
     }, () => success(`${spec.idLabel ?? spec.name} ${id} deleted`));
@@ -327,21 +349,31 @@ function registerDeleteMany(parent: Command, spec: ResourceSpec): void {
   const version = versionOf(style);
   const path = spec.path as string;
 
+  const filters = spec.deleteManyFilters ?? spec.params ?? [];
+  // Some collection DELETEs take no filters at all; offering --query there
+  // would suggest a narrowing the API silently ignores.
+  const unfilterable = spec.deleteManyFilters !== undefined && spec.deleteManyFilters.length === 0;
+
   const cmd = parent
     .command('delete-many')
-    .description(`Delete ${spec.describe.toLowerCase()} in bulk`)
-    .option('--query <k=v>', 'filter to delete by (repeatable)', collectPairs, {} as Record<string, string>)
-    .option('--yes', 'confirm deleting every record when no filter is given');
+    .description(unfilterable
+      ? `Delete every ${spec.idLabel ?? spec.name} (takes no filters; needs --yes)`
+      : `Delete ${spec.describe.toLowerCase()} in bulk`);
+  if (!unfilterable) {
+    cmd.option('--query <k=v>', 'filter to delete by (repeatable)', collectPairs, {} as Record<string, string>);
+  }
+  cmd.option('--yes', unfilterable ? 'confirm deleting every record' : 'confirm deleting every record when no filter is given');
   addPathOpts(cmd, path);
-  addParamOpts(cmd, spec.params);
+  addParamOpts(cmd, filters);
 
   setMeta(cmd, { http: { method: 'DELETE', path: `/${version}/${path}` } });
 
-  addOpts(cmd).action(async (opts: BaseOpts & { query: Record<string, string>; yes?: boolean }) => {
-    const params = { ...collectParams(spec.params, opts), ...opts.query };
-    if (Object.keys(params).length === 0 && !opts.yes) {
-      errorOut(`This deletes every ${spec.idLabel ?? spec.name} in the store. Narrow it with --query <k=v>, or pass --yes.`);
-      return;
+  addOpts(cmd).action(async (opts: BaseOpts & { query?: Record<string, string>; yes?: boolean }) => {
+    const params = { ...collectParams(filters, opts), ...(opts.query ?? {}) };
+    if (Object.keys(params).length === 0 && !opts.yes && !runtime.dryRun) {
+      errorOut(unfilterable
+        ? `This endpoint takes no filters: it deletes every ${spec.idLabel ?? spec.name}${placeholders(path).length ? ' under the parent' : ' in the store'}. Pass --yes to confirm.`
+        : `This deletes every ${spec.idLabel ?? spec.name} in the store. Narrow it with --query <k=v>, or pass --yes.`);
     }
     await run(`Deleting ${spec.name}...`, async () => {
       const bc = client(opts.profile);
@@ -360,7 +392,7 @@ function registerAction(parent: Command, spec: ResourceSpec, action: ActionSpec)
     cmd.option('--data <json>', 'request body as JSON').option('--file <path>', 'path to a JSON file');
   }
   if (action.upload) {
-    cmd.option('--file <path>', 'local image file to upload');
+    cmd.option('--file <path>', action.upload.describe ?? 'local image file to upload');
     if (action.upload.urlField) cmd.option('--url <url>', 'publicly reachable image URL');
   }
   if (action.download) {

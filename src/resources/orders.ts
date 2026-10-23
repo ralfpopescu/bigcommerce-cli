@@ -12,6 +12,8 @@ export const ORDERS: ResourceSpec = {
   idLabel: 'order',
   ops: ['list', 'get', 'create', 'update', 'delete', 'delete-many'],
   fields: ORDER_FIELDS,
+  // DELETE /v2/orders archives every order and accepts no filters.
+  deleteManyFilters: [],
   params: ['status_id', 'customer_id', 'email', 'min_date_created', 'max_date_created', 'min_id', 'max_id', 'is_deleted', 'channel_id', 'sort'],
   actions: [
     {
@@ -118,6 +120,8 @@ export const ORDERS: ResourceSpec = {
       style: 'v2-item',
       idLabel: 'shipment',
       ops: ['list', 'get', 'create', 'update', 'delete', 'delete-many'],
+      // DELETE /v2/orders/{id}/shipments removes all of the order's shipments.
+      deleteManyFilters: [],
       fields: ['id', 'order_id', 'tracking_number', 'shipping_method', 'shipping_provider', 'date_created'],
       actions: [
         {
