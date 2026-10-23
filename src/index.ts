@@ -8,6 +8,7 @@ import { registerCustomers } from './commands/customers';
 import { registerChannels } from './commands/channels';
 import { registerInventory } from './commands/inventory';
 import { registerApi, registerPaymentProcessing } from './commands/api';
+import { registerDoctor } from './commands/doctor';
 import { registerDiscovery, finalizeCommands } from './commands/discovery';
 import { registerStorefrontGraphql, registerAdminGraphqlSchema } from './commands/storefront';
 import { mountAll } from './resource';
@@ -97,6 +98,7 @@ program.hook('preAction', (_root, action) => {
 program.hook('postAction', () => flushSuccess());
 
 registerAuth(program);
+registerDoctor(program, version);
 registerApi(program);
 
 // Hand-written commands go on first: multipart uploads and other behaviour the
