@@ -63,6 +63,11 @@ describe('bigc commands --json', () => {
   it('marks GETs as non-mutating and everything else as mutating', () => {
     for (const e of catalog.filter(e => e.http)) {
       if (e.mutating === 'conditional') continue;
+      // Schema introspection is a GraphQL query sent as a POST.
+      if (e.command.endsWith('graphql schema')) {
+        expect(e.mutating).toBe(false);
+        continue;
+      }
       expect(e.mutating, e.command).toBe(e.http.method !== 'GET');
     }
   });

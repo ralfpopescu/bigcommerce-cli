@@ -283,12 +283,12 @@ export class ApiClient {
   request(
     method: string,
     pathname: string,
-    opts: { body?: unknown; params?: Record<string, unknown> } = {},
+    opts: { body?: unknown; params?: Record<string, unknown>; mutating?: boolean } = {},
   ): Promise<unknown> {
     let url = this.storeUrl(pathname);
     const qs = toQuery(opts.params);
     if (qs) url += `${url.includes('?') ? '&' : '?'}${qs}`;
-    return this.send(method, url, opts.body);
+    return this.send(method, url, opts.body, opts.mutating);
   }
 
   /**

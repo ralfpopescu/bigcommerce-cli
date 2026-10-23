@@ -9,6 +9,7 @@ import { registerChannels } from './commands/channels';
 import { registerInventory } from './commands/inventory';
 import { registerApi, registerPaymentProcessing } from './commands/api';
 import { registerDiscovery, finalizeCommands } from './commands/discovery';
+import { registerStorefrontGraphql, registerAdminGraphqlSchema } from './commands/storefront';
 import { mountAll } from './resource';
 import { RESOURCES } from './resources';
 import { runtime } from './runtime';
@@ -81,7 +82,8 @@ program
   .version(version);
 
 program.hook('preAction', (_root, action) => {
-  const opts = action.opts() as { output?: unknown; dryRun?: boolean; ndjson?: boolean };
+  // optsWithGlobals: a subcommand like `graphql schema` shares options with its parent.
+  const opts = action.optsWithGlobals() as { output?: unknown; dryRun?: boolean; ndjson?: boolean };
   runtime.ndjson = Boolean(opts.ndjson);
   // NDJSON is a JSON format; anything else would mix tables into the stream.
   runtime.output = runtime.ndjson ? 'json' : resolveOutput(opts.output, jsonByDefault.has(action));
@@ -110,6 +112,8 @@ mountAll(program, RESOURCES);
 
 const payments = program.commands.find(c => c.name() === 'payments');
 if (payments) registerPaymentProcessing(payments);
+registerStorefrontGraphql(program);
+registerAdminGraphqlSchema(program);
 
 // Last, so the catalog sees every command registered above.
 registerDiscovery(program);
