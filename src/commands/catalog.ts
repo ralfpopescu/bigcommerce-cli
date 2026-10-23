@@ -1,10 +1,10 @@
 import * as fs from 'fs';
 import { Command } from 'commander';
-import ora from 'ora';
 import chalk from 'chalk';
-import { getProfile } from '../config';
 import { ApiClient, MultipartField } from '../api/client';
-import { print, success, errorOut, OutputFormat } from '../output';
+import { print, success, errorOut, OutputFormat, progress } from '../output';
+import { client, parseInput, addOpts } from '../shared';
+import { UsageError } from '../errors';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
 
@@ -13,23 +13,6 @@ const CATEGORY_FIELDS = ['id', 'name', 'parent_id', 'sort_order', 'is_visible'];
 const BRAND_FIELDS = ['id', 'name', 'page_title'];
 const VARIANT_FIELDS = ['id', 'sku', 'price', 'cost_price', 'weight', 'inventory_level', 'purchasing_disabled'];
 const IMAGE_FIELDS = ['id', 'product_id', 'is_thumbnail', 'sort_order', 'description', 'url_thumbnail'];
-
-function client(profile?: string): ApiClient {
-  const p = getProfile(profile);
-  return new ApiClient(p.storeHash, p.accessToken);
-}
-
-function parseInput(opts: { data?: string; file?: string }): unknown {
-  if (opts.data) return JSON.parse(opts.data);
-  if (opts.file) return JSON.parse(fs.readFileSync(opts.file, 'utf-8'));
-  throw new Error('Provide --data <json> or --file <path>');
-}
-
-function addOpts(cmd: Command): Command {
-  return cmd
-    .option('-o, --output <format>', 'output format: json|table|pretty', 'pretty')
-    .option('--profile <name>', 'credential profile');
-}
 
 function collect(value: string, previous: string[]): string[] {
   return previous.concat([value]);
@@ -105,7 +88,7 @@ export function registerCatalog(program: Command): void {
       paramsFor('catalog', 'products')
     )
   ).action(async (opts: { page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching products...').start();
+    const spinner = progress('Fetching products...').start();
     try {
       const bc = client(opts.profile);
       const filters = queryParams(opts, paramsFor('catalog', 'products'));
@@ -120,7 +103,7 @@ export function registerCatalog(program: Command): void {
       print(data, opts.output, PRODUCT_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -135,7 +118,7 @@ export function registerCatalog(program: Command): void {
       const res = await bc.get('v3', `catalog/products/${id}`) as { data: unknown };
       print(res.data, opts.output);
     } catch (e) {
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -155,7 +138,7 @@ export function registerCatalog(program: Command): void {
     output: OutputFormat;
     profile?: string;
   }) => {
-    const spinner = ora('Creating product...').start();
+    const spinner = progress('Creating product...').start();
     try {
       const bc = client(opts.profile);
       const body = parseInput(opts);
@@ -165,7 +148,7 @@ export function registerCatalog(program: Command): void {
       success(`Product created (id ${product.id})`);
 
       if (opts.imageFile.length > 0 || opts.imageUrl.length > 0) {
-        const imgSpinner = ora(`Uploading ${opts.imageFile.length + opts.imageUrl.length} image(s)...`).start();
+        const imgSpinner = progress(`Uploading ${opts.imageFile.length + opts.imageUrl.length} image(s)...`).start();
         const result = await uploadProductImages(bc, product.id, opts.imageFile, opts.imageUrl);
         imgSpinner.stop();
         reportImageResult(result);
@@ -174,7 +157,7 @@ export function registerCatalog(program: Command): void {
       print(product, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -195,7 +178,7 @@ export function registerCatalog(program: Command): void {
     output: OutputFormat;
     profile?: string;
   }) => {
-    const spinner = ora('Updating product...').start();
+    const spinner = progress('Updating product...').start();
     try {
       const bc = client(opts.profile);
       const hasMetadata = opts.data || opts.file;
@@ -209,7 +192,7 @@ export function registerCatalog(program: Command): void {
       if (hasMetadata) success(`Product ${id} updated`);
 
       if (opts.imageFile.length > 0 || opts.imageUrl.length > 0) {
-        const imgSpinner = ora(`Uploading ${opts.imageFile.length + opts.imageUrl.length} image(s)...`).start();
+        const imgSpinner = progress(`Uploading ${opts.imageFile.length + opts.imageUrl.length} image(s)...`).start();
         const result = await uploadProductImages(bc, id, opts.imageFile, opts.imageUrl);
         imgSpinner.stop();
         reportImageResult(result);
@@ -220,7 +203,7 @@ export function registerCatalog(program: Command): void {
       if (product) print(product, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -230,7 +213,7 @@ export function registerCatalog(program: Command): void {
       .description('Delete a product')
       .argument('<id>', 'product ID')
   ).action(async (id: string, opts: { output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Deleting product...').start();
+    const spinner = progress('Deleting product...').start();
     try {
       const bc = client(opts.profile);
       await bc.del('v3', `catalog/products/${id}`);
@@ -238,7 +221,7 @@ export function registerCatalog(program: Command): void {
       success(`Product ${id} deleted`);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -253,7 +236,7 @@ export function registerCatalog(program: Command): void {
       .requiredOption('--product-id <id>', 'product ID')
       .option('--all', 'fetch all pages')
   ).action(async (opts: { productId: string; all?: boolean; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching images...').start();
+    const spinner = progress('Fetching images...').start();
     try {
       const bc = client(opts.profile);
       let data: unknown;
@@ -267,7 +250,7 @@ export function registerCatalog(program: Command): void {
       print(data, opts.output, IMAGE_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -294,14 +277,14 @@ export function registerCatalog(program: Command): void {
     if (!opts.file && !opts.url) errorOut('Provide --file <path> or --url <url>');
     if (opts.file && opts.url) errorOut('Provide --file or --url, not both');
 
-    const spinner = ora('Uploading image...').start();
+    const spinner = progress('Uploading image...').start();
     try {
       const bc = client(opts.profile);
       const resource = `catalog/products/${opts.productId}/images`;
       let res: { data: unknown };
 
       if (opts.file) {
-        if (!fs.existsSync(opts.file)) throw new Error(`File not found: ${opts.file}`);
+        if (!fs.existsSync(opts.file)) throw new UsageError(`File not found: ${opts.file}`);
         res = await bc.postMultipart('v3', resource, {
           ...imageFields(opts),
           image_file: { filePath: opts.file },
@@ -319,7 +302,7 @@ export function registerCatalog(program: Command): void {
       print(res.data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -346,14 +329,14 @@ export function registerCatalog(program: Command): void {
   }) => {
     if (opts.file && opts.url) errorOut('Provide --file or --url, not both');
 
-    const spinner = ora('Updating image...').start();
+    const spinner = progress('Updating image...').start();
     try {
       const bc = client(opts.profile);
       const resource = `catalog/products/${opts.productId}/images/${imageId}`;
       let res: { data: unknown };
 
       if (opts.file) {
-        if (!fs.existsSync(opts.file)) throw new Error(`File not found: ${opts.file}`);
+        if (!fs.existsSync(opts.file)) throw new UsageError(`File not found: ${opts.file}`);
         res = await bc.putMultipart('v3', resource, {
           ...imageFields(opts),
           image_file: { filePath: opts.file },
@@ -372,7 +355,7 @@ export function registerCatalog(program: Command): void {
       print(res.data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -383,7 +366,7 @@ export function registerCatalog(program: Command): void {
       .requiredOption('--product-id <id>', 'product ID')
       .argument('<image-id>', 'image ID')
   ).action(async (imageId: string, opts: { productId: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Deleting image...').start();
+    const spinner = progress('Deleting image...').start();
     try {
       const bc = client(opts.profile);
       await bc.del('v3', `catalog/products/${opts.productId}/images/${imageId}`);
@@ -391,7 +374,7 @@ export function registerCatalog(program: Command): void {
       success(`Image ${imageId} deleted`);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -408,7 +391,7 @@ export function registerCatalog(program: Command): void {
       paramsFor('catalog', 'categories')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching categories...').start();
+    const spinner = progress('Fetching categories...').start();
     try {
       const bc = client(opts.profile);
       const filters = queryParams(opts, paramsFor('catalog', 'categories'));
@@ -423,7 +406,7 @@ export function registerCatalog(program: Command): void {
       print(data, opts.output, CATEGORY_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -438,7 +421,7 @@ export function registerCatalog(program: Command): void {
       const res = await bc.get('v3', `catalog/categories/${id}`) as { data: unknown };
       print(res.data, opts.output);
     } catch (e) {
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -452,7 +435,7 @@ export function registerCatalog(program: Command): void {
       .option('--data <json>', 'category JSON (object or array)')
       .option('--file <path>', 'path to JSON file')
   ).action(async (opts: { data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Creating category...').start();
+    const spinner = progress('Creating category...').start();
     try {
       const bc = client(opts.profile);
       const input = parseInput(opts);
@@ -463,7 +446,7 @@ export function registerCatalog(program: Command): void {
       print(res.data, opts.output, CATEGORY_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -475,7 +458,7 @@ export function registerCatalog(program: Command): void {
       .option('--data <json>', 'fields to update as JSON')
       .option('--file <path>', 'path to JSON file')
   ).action(async (id: string, opts: { data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Updating category...').start();
+    const spinner = progress('Updating category...').start();
     try {
       const bc = client(opts.profile);
       const input = parseInput(opts) as Record<string, unknown>;
@@ -486,7 +469,7 @@ export function registerCatalog(program: Command): void {
       print((res.data ?? [])[0], opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -496,7 +479,7 @@ export function registerCatalog(program: Command): void {
       .description('Delete a category')
       .argument('<id>', 'category ID')
   ).action(async (id: string, opts: { output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Deleting category...').start();
+    const spinner = progress('Deleting category...').start();
     try {
       const bc = client(opts.profile);
       await bc.del('v3', 'catalog/trees/categories', { 'category_id:in': id });
@@ -504,7 +487,7 @@ export function registerCatalog(program: Command): void {
       success(`Category ${id} deleted`);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -521,13 +504,13 @@ export function registerCatalog(program: Command): void {
     if (!opts.file && !opts.url) errorOut('Provide --file <path> or --url <url>');
     if (opts.file && opts.url) errorOut('Provide --file or --url, not both');
 
-    const spinner = ora('Uploading category image...').start();
+    const spinner = progress('Uploading category image...').start();
     try {
       const bc = client(opts.profile);
       const resource = `catalog/categories/${opts.categoryId}/image`;
       let res: { data: unknown };
       if (opts.file) {
-        if (!fs.existsSync(opts.file)) throw new Error(`File not found: ${opts.file}`);
+        if (!fs.existsSync(opts.file)) throw new UsageError(`File not found: ${opts.file}`);
         res = await bc.postMultipart('v3', resource, { image_file: { filePath: opts.file } }) as { data: unknown };
       } else {
         res = await bc.post('v3', resource, { image_url: opts.url }) as { data: unknown };
@@ -537,7 +520,7 @@ export function registerCatalog(program: Command): void {
       print(res.data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -547,7 +530,7 @@ export function registerCatalog(program: Command): void {
       .description('Delete the category image')
       .requiredOption('--category-id <id>', 'category ID')
   ).action(async (opts: { categoryId: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Deleting category image...').start();
+    const spinner = progress('Deleting category image...').start();
     try {
       const bc = client(opts.profile);
       await bc.del('v3', `catalog/categories/${opts.categoryId}/image`);
@@ -555,7 +538,7 @@ export function registerCatalog(program: Command): void {
       success(`Category ${opts.categoryId} image deleted`);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -572,7 +555,7 @@ export function registerCatalog(program: Command): void {
       paramsFor('catalog', 'brands')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching brands...').start();
+    const spinner = progress('Fetching brands...').start();
     try {
       const bc = client(opts.profile);
       const filters = queryParams(opts, paramsFor('catalog', 'brands'));
@@ -587,7 +570,7 @@ export function registerCatalog(program: Command): void {
       print(data, opts.output, BRAND_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -602,7 +585,7 @@ export function registerCatalog(program: Command): void {
       const res = await bc.get('v3', `catalog/brands/${id}`) as { data: unknown };
       print(res.data, opts.output);
     } catch (e) {
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -619,13 +602,13 @@ export function registerCatalog(program: Command): void {
     if (!opts.file && !opts.url) errorOut('Provide --file <path> or --url <url>');
     if (opts.file && opts.url) errorOut('Provide --file or --url, not both');
 
-    const spinner = ora('Uploading brand image...').start();
+    const spinner = progress('Uploading brand image...').start();
     try {
       const bc = client(opts.profile);
       const resource = `catalog/brands/${opts.brandId}/image`;
       let res: { data: unknown };
       if (opts.file) {
-        if (!fs.existsSync(opts.file)) throw new Error(`File not found: ${opts.file}`);
+        if (!fs.existsSync(opts.file)) throw new UsageError(`File not found: ${opts.file}`);
         res = await bc.postMultipart('v3', resource, { image_file: { filePath: opts.file } }) as { data: unknown };
       } else {
         res = await bc.post('v3', resource, { image_url: opts.url }) as { data: unknown };
@@ -635,7 +618,7 @@ export function registerCatalog(program: Command): void {
       print(res.data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -645,7 +628,7 @@ export function registerCatalog(program: Command): void {
       .description('Delete the brand image')
       .requiredOption('--brand-id <id>', 'brand ID')
   ).action(async (opts: { brandId: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Deleting brand image...').start();
+    const spinner = progress('Deleting brand image...').start();
     try {
       const bc = client(opts.profile);
       await bc.del('v3', `catalog/brands/${opts.brandId}/image`);
@@ -653,7 +636,7 @@ export function registerCatalog(program: Command): void {
       success(`Brand ${opts.brandId} image deleted`);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -670,7 +653,7 @@ export function registerCatalog(program: Command): void {
         .option('--all', 'fetch all pages')
     )
   ).action(async (opts: { productId: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching variants...').start();
+    const spinner = progress('Fetching variants...').start();
     try {
       const bc = client(opts.profile);
       let data: unknown;
@@ -684,7 +667,7 @@ export function registerCatalog(program: Command): void {
       print(data, opts.output, VARIANT_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -700,7 +683,7 @@ export function registerCatalog(program: Command): void {
       const res = await bc.get('v3', `catalog/products/${opts.productId}/variants/${variantId}`) as { data: unknown };
       print(res.data, opts.output);
     } catch (e) {
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -712,7 +695,7 @@ export function registerCatalog(program: Command): void {
       .option('--data <json>', 'variant JSON')
       .option('--file <path>', 'path to JSON file')
   ).action(async (opts: { productId: string; data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Creating variant...').start();
+    const spinner = progress('Creating variant...').start();
     try {
       const bc = client(opts.profile);
       const body = parseInput(opts);
@@ -722,7 +705,7 @@ export function registerCatalog(program: Command): void {
       print(res.data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -735,7 +718,7 @@ export function registerCatalog(program: Command): void {
       .option('--data <json>', 'fields to update as JSON')
       .option('--file <path>', 'path to JSON file')
   ).action(async (variantId: string, opts: { productId: string; data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Updating variant...').start();
+    const spinner = progress('Updating variant...').start();
     try {
       const bc = client(opts.profile);
       const body = parseInput(opts);
@@ -745,7 +728,7 @@ export function registerCatalog(program: Command): void {
       print(res.data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -756,7 +739,7 @@ export function registerCatalog(program: Command): void {
       .requiredOption('--product-id <id>', 'product ID')
       .argument('<variant-id>', 'variant ID')
   ).action(async (variantId: string, opts: { productId: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Deleting variant...').start();
+    const spinner = progress('Deleting variant...').start();
     try {
       const bc = client(opts.profile);
       await bc.del('v3', `catalog/products/${opts.productId}/variants/${variantId}`);
@@ -764,7 +747,7 @@ export function registerCatalog(program: Command): void {
       success(`Variant ${variantId} deleted`);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 }

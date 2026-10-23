@@ -1,30 +1,11 @@
-import * as fs from 'fs';
 import { Command } from 'commander';
-import ora from 'ora';
-import { getProfile } from '../config';
-import { ApiClient } from '../api/client';
-import { print, success, errorOut, OutputFormat } from '../output';
+import { print, success, errorOut, OutputFormat, progress } from '../output';
+import { client, parseInput, addOpts } from '../shared';
+import { UsageError } from '../errors';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
 
 const ORDER_FIELDS = ['id', 'status', 'customer_id', 'date_created', 'total_inc_tax', 'currency_code', 'payment_method', 'items_total'];
-
-function client(profile?: string): ApiClient {
-  const p = getProfile(profile);
-  return new ApiClient(p.storeHash, p.accessToken);
-}
-
-function parseInput(opts: { data?: string; file?: string }): unknown {
-  if (opts.data) return JSON.parse(opts.data);
-  if (opts.file) return JSON.parse(fs.readFileSync(opts.file, 'utf-8'));
-  throw new Error('Provide --data <json> or --file <path>');
-}
-
-function addOpts(cmd: Command): Command {
-  return cmd
-    .option('-o, --output <format>', 'output format: json|table|pretty', 'pretty')
-    .option('--profile <name>', 'credential profile');
-}
 
 export function registerOrders(program: Command): void {
   const orders = program.command('orders').description('Manage orders');
@@ -41,7 +22,7 @@ export function registerOrders(program: Command): void {
       paramsFor('orders')
     )
   ).action(async (opts: { status?: string; page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching orders...').start();
+    const spinner = progress('Fetching orders...').start();
     try {
       const bc = client(opts.profile);
       const params: Record<string, unknown> = queryParams(opts, paramsFor('orders'));
@@ -58,7 +39,7 @@ export function registerOrders(program: Command): void {
       print(Array.isArray(data) ? data : [], opts.output, ORDER_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -73,7 +54,7 @@ export function registerOrders(program: Command): void {
       const data = await bc.get('v2', `orders/${id}`);
       print(data, opts.output);
     } catch (e) {
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -86,7 +67,7 @@ export function registerOrders(program: Command): void {
       .option('--data <json>', 'fields to update as JSON')
       .option('--file <path>', 'path to a JSON file')
   ).action(async (id: string, opts: { status?: string; data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Updating order...').start();
+    const spinner = progress('Updating order...').start();
     try {
       const bc = client(opts.profile);
       const body: Record<string, unknown> = opts.data || opts.file
@@ -94,7 +75,7 @@ export function registerOrders(program: Command): void {
         : {};
       if (opts.status) body.status_id = opts.status;
       if (Object.keys(body).length === 0) {
-        throw new Error('Nothing to update. Provide --status, --data, or --file.');
+        throw new UsageError('Nothing to update. Provide --status, --data, or --file.');
       }
       const data = await bc.put('v2', `orders/${id}`, body);
       spinner.stop();
@@ -102,7 +83,7 @@ export function registerOrders(program: Command): void {
       print(data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 }

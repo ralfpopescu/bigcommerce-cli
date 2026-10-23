@@ -97,7 +97,7 @@ export function registerAuth(program: Command): void {
         success(`Saved profile "${opts.profile}" (store: ${storeHash})`);
       } catch (e) {
         closePrompts();
-        errorOut((e as Error).message);
+        errorOut(e);
       }
     });
 
@@ -110,7 +110,7 @@ export function registerAuth(program: Command): void {
         removeProfile(opts.profile);
         success(`Removed profile "${opts.profile}"`);
       } catch (e) {
-        errorOut((e as Error).message);
+        errorOut(e);
       }
     });
 
@@ -139,7 +139,7 @@ export function registerAuth(program: Command): void {
         setActiveProfile(profile);
         success(`Active profile set to "${profile}"`);
       } catch (e) {
-        errorOut((e as Error).message);
+        errorOut(e);
       }
     });
 }

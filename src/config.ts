@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { CliError, EXIT } from './errors';
 
 // BIGC_CONFIG_DIR lets tests (and anyone keeping several setups apart) point
 // the CLI somewhere other than the real credentials file.
@@ -10,9 +11,24 @@ const CREDENTIALS_FILE = path.join(CONFIG_DIR, 'credentials.json');
 const ENV_STORE_HASH = 'BIGC_STORE_HASH';
 const ENV_TOKEN = 'BIGC_TOKEN';
 
+const ENV_READ_ONLY = 'BIGC_READ_ONLY';
+
 export interface Profile {
   storeHash: string;
   accessToken: string;
+  /** Refuse every non-GET request made with this profile. */
+  readOnly?: boolean;
+}
+
+/** A profile as resolved for one invocation, with where it came from. */
+export interface ResolvedProfile extends Profile {
+  name?: string;
+  source: 'env' | 'profile';
+}
+
+/** BIGC_READ_ONLY=1 (or true/yes) forces read-only whatever the profile says. */
+export function envReadOnly(): boolean {
+  return /^(1|true|yes)$/i.test(process.env[ENV_READ_ONLY] ?? '');
 }
 
 export interface Credentials {
@@ -59,28 +75,29 @@ export function writeCredentials(creds: Credentials): void {
  * from disk; otherwise BIGC_STORE_HASH/BIGC_TOKEN win over the active profile,
  * so CI can authenticate without writing a token to the filesystem.
  */
-export function getProfile(name?: string): Profile {
+export function getProfile(name?: string): ResolvedProfile {
   if (!name) {
     const storeHash = process.env[ENV_STORE_HASH];
     const accessToken = process.env[ENV_TOKEN];
-    if (storeHash && accessToken) return { storeHash, accessToken };
+    if (storeHash && accessToken) return { storeHash, accessToken, readOnly: envReadOnly(), source: 'env' };
   }
 
   const creds = readCredentials();
   const profileName = name ?? creds.activeProfile;
   const profile = creds.profiles[profileName];
   if (!profile) {
-    throw new Error(
+    throw new CliError(
       `Profile "${profileName}" not found. Run: bigc auth login${name ? ` --profile ${name}` : ''}` +
-        `, or set ${ENV_STORE_HASH} and ${ENV_TOKEN}.`
+        `, or set ${ENV_STORE_HASH} and ${ENV_TOKEN}.`,
+      EXIT.auth,
     );
   }
-  return profile;
+  return { ...profile, readOnly: Boolean(profile.readOnly) || envReadOnly(), name: profileName, source: 'profile' };
 }
 
-export function setProfile(name: string, storeHash: string, accessToken: string): void {
+export function setProfile(name: string, storeHash: string, accessToken: string, readOnly = false): void {
   const creds = readCredentials();
-  creds.profiles[name] = { storeHash, accessToken };
+  creds.profiles[name] = readOnly ? { storeHash, accessToken, readOnly } : { storeHash, accessToken };
   if (!creds.activeProfile || Object.keys(creds.profiles).length === 1) {
     creds.activeProfile = name;
   }
@@ -89,7 +106,7 @@ export function setProfile(name: string, storeHash: string, accessToken: string)
 
 export function removeProfile(name: string): void {
   const creds = readCredentials();
-  if (!creds.profiles[name]) throw new Error(`Profile "${name}" not found`);
+  if (!creds.profiles[name]) throw new CliError(`Profile "${name}" not found`, EXIT.usage);
   delete creds.profiles[name];
   if (creds.activeProfile === name) {
     creds.activeProfile = Object.keys(creds.profiles)[0] ?? '';
@@ -97,9 +114,18 @@ export function removeProfile(name: string): void {
   writeCredentials(creds);
 }
 
+export function setProfileReadOnly(name: string, readOnly: boolean): void {
+  const creds = readCredentials();
+  const profile = creds.profiles[name];
+  if (!profile) throw new CliError(`Profile "${name}" not found`, EXIT.usage);
+  if (readOnly) profile.readOnly = true;
+  else delete profile.readOnly;
+  writeCredentials(creds);
+}
+
 export function setActiveProfile(name: string): void {
   const creds = readCredentials();
-  if (!creds.profiles[name]) throw new Error(`Profile "${name}" not found`);
+  if (!creds.profiles[name]) throw new CliError(`Profile "${name}" not found`, EXIT.usage);
   creds.activeProfile = name;
   writeCredentials(creds);
 }

@@ -1,9 +1,8 @@
 import * as fs from 'fs';
 import { Command } from 'commander';
-import ora from 'ora';
-import { getProfile } from './config';
-import { ApiClient } from './api/client';
-import { print, success, errorOut, OutputFormat } from './output';
+import { print, success, errorOut, progress, OutputFormat } from './output';
+import { client, parseInput, addOpts } from './shared';
+import { CliError, EXIT, UsageError } from './errors';
 
 export type Version = 'v2' | 'v3';
 export type Op = 'list' | 'get' | 'create' | 'update' | 'delete' | 'delete-many';
@@ -61,17 +60,6 @@ export interface ResourceSpec {
 
 // ── Shared plumbing ─────────────────────────────────────────────────────────
 
-function client(profile?: string): ApiClient {
-  const p = getProfile(profile);
-  return new ApiClient(p.storeHash, p.accessToken);
-}
-
-function parseInput(opts: { data?: string; file?: string }): unknown {
-  if (opts.data) return JSON.parse(opts.data);
-  if (opts.file) return JSON.parse(fs.readFileSync(opts.file, 'utf-8'));
-  throw new Error('Provide --data <json> or --file <path>');
-}
-
 function optionName(placeholder: string): string {
   return `--${placeholder.replace(/_/g, '-')}`;
 }
@@ -92,19 +80,13 @@ function fill(path: string, values: Record<string, unknown>): string {
   return path.replace(/\{([a-z_]+)\}/g, (_, key: string) => {
     const value = values[propName(key)];
     if (value === undefined || value === null || value === '') {
-      throw new Error(`Missing ${optionName(key)}`);
+      throw new UsageError(`Missing ${optionName(key)}`);
     }
     return encodeURIComponent(String(value));
   });
 }
 
 type BaseOpts = { output: OutputFormat; profile?: string } & Record<string, unknown>;
-
-function addOpts(cmd: Command): Command {
-  return cmd
-    .option('-o, --output <format>', 'output format: json|table|pretty', 'pretty')
-    .option('--profile <name>', 'credential profile');
-}
 
 /** Adds a required option for every {placeholder} the path needs. */
 function addPathOpts(cmd: Command, path: string, skip: string[] = []): Command {
@@ -146,14 +128,14 @@ function defaultOps(style: Style): Op[] {
 
 /** Runs an action, stopping the spinner exactly once whichever way it ends. */
 async function run<T>(message: string, fn: () => Promise<T>, onDone: (value: T) => void): Promise<void> {
-  const spinner = ora(message).start();
+  const spinner = progress(message).start();
   try {
     const value = await fn();
     spinner.stop();
     onDone(value);
   } catch (e) {
     spinner.stop();
-    errorOut((e as Error).message);
+    errorOut(e);
   }
 }
 
@@ -219,7 +201,7 @@ function registerGet(parent: Command, spec: ResourceSpec): void {
       if (style === 'v3-batch') {
         const res = await bc.get(version, resource, { ...params, [spec.deleteQuery ?? 'id:in']: id }) as { data: unknown[] };
         const found = (res.data ?? [])[0];
-        if (!found) throw new Error(`${spec.name} ${id} not found`);
+        if (!found) throw new CliError(`${spec.name} ${id} not found`, EXIT.notFound);
         return found;
       }
       const res = await bc.get(version, singleton ? resource : `${resource}/${id}`, params);
@@ -285,7 +267,7 @@ function registerUpdate(parent: Command, spec: ResourceSpec): void {
 
       if (batch) {
         if (!id && !Array.isArray(input)) {
-          throw new Error(`Provide an ID, or pass an array of objects that each carry an "id"`);
+          throw new UsageError(`Provide an ID, or pass an array of objects that each carry an "id"`);
         }
         const body = id ? [{ ...(input as Record<string, unknown>), id: numeric(id) }] : input;
         const res = await bc.request('PUT', `${version}/${resource}`, { body, params }) as { data: unknown[] };
@@ -401,7 +383,7 @@ function registerAction(parent: Command, spec: ResourceSpec, action: ActionSpec)
         if (url && urlField) {
           return bc.request(action.method, pathname, { body: { [urlField]: url }, params });
         }
-        throw new Error(urlField ? 'Provide --file <path> or --url <url>' : 'Provide --file <path>');
+        throw new UsageError(urlField ? 'Provide --file <path> or --url <url>' : 'Provide --file <path>');
       }
 
       const body = action.body ? parseInput(opts) : undefined;
@@ -419,7 +401,7 @@ function registerAction(parent: Command, spec: ResourceSpec, action: ActionSpec)
 
 function collectPairs(value: string, previous: Record<string, string>): Record<string, string> {
   const index = value.indexOf('=');
-  if (index === -1) throw new Error(`--query expects key=value, got "${value}"`);
+  if (index === -1) throw new UsageError(`--query expects key=value, got "${value}"`);
   return { ...previous, [value.slice(0, index)]: value.slice(index + 1) };
 }
 

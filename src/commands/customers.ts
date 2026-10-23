@@ -1,30 +1,11 @@
-import * as fs from 'fs';
 import { Command } from 'commander';
-import ora from 'ora';
-import { getProfile } from '../config';
-import { ApiClient } from '../api/client';
-import { print, success, errorOut, OutputFormat } from '../output';
+import { print, success, errorOut, OutputFormat, progress } from '../output';
+import { client, parseInput, addOpts } from '../shared';
+import { CliError, EXIT } from '../errors';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
 
 const CUSTOMER_FIELDS = ['id', 'first_name', 'last_name', 'email', 'company', 'phone', 'customer_group_id', 'date_created'];
-
-function client(profile?: string): ApiClient {
-  const p = getProfile(profile);
-  return new ApiClient(p.storeHash, p.accessToken);
-}
-
-function parseInput(opts: { data?: string; file?: string }): unknown {
-  if (opts.data) return JSON.parse(opts.data);
-  if (opts.file) return JSON.parse(fs.readFileSync(opts.file, 'utf-8'));
-  throw new Error('Provide --data <json> or --file <path>');
-}
-
-function addOpts(cmd: Command): Command {
-  return cmd
-    .option('-o, --output <format>', 'output format: json|table|pretty', 'pretty')
-    .option('--profile <name>', 'credential profile');
-}
 
 export function registerCustomers(program: Command): void {
   const customers = program.command('customers').description('Manage customers');
@@ -40,7 +21,7 @@ export function registerCustomers(program: Command): void {
       paramsFor('customers')
     )
   ).action(async (opts: { page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching customers...').start();
+    const spinner = progress('Fetching customers...').start();
     try {
       const bc = client(opts.profile);
       const filters = queryParams(opts, paramsFor('customers'));
@@ -55,7 +36,7 @@ export function registerCustomers(program: Command): void {
       print(data, opts.output, CUSTOMER_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -69,10 +50,10 @@ export function registerCustomers(program: Command): void {
       const bc = client(opts.profile);
       const res = await bc.get('v3', 'customers', { 'id:in': id }) as { data: unknown[] };
       const customer = (res.data ?? [])[0];
-      if (!customer) errorOut(`Customer ${id} not found`);
+      if (!customer) throw new CliError(`Customer ${id} not found`, EXIT.notFound);
       print(customer, opts.output);
     } catch (e) {
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -83,7 +64,7 @@ export function registerCustomers(program: Command): void {
       .option('--data <json>', 'customer JSON (object or array)')
       .option('--file <path>', 'path to JSON file')
   ).action(async (opts: { data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Creating customer...').start();
+    const spinner = progress('Creating customer...').start();
     try {
       const bc = client(opts.profile);
       const input = parseInput(opts);
@@ -94,7 +75,7 @@ export function registerCustomers(program: Command): void {
       print(res.data, opts.output, CUSTOMER_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -106,7 +87,7 @@ export function registerCustomers(program: Command): void {
       .option('--data <json>', 'fields to update as JSON')
       .option('--file <path>', 'path to JSON file')
   ).action(async (id: string, opts: { data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Updating customer...').start();
+    const spinner = progress('Updating customer...').start();
     try {
       const bc = client(opts.profile);
       const input = parseInput(opts) as Record<string, unknown>;
@@ -117,7 +98,7 @@ export function registerCustomers(program: Command): void {
       print((res.data ?? [])[0], opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -127,7 +108,7 @@ export function registerCustomers(program: Command): void {
       .description('Delete a customer')
       .argument('<id>', 'customer ID')
   ).action(async (id: string, opts: { output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Deleting customer...').start();
+    const spinner = progress('Deleting customer...').start();
     try {
       const bc = client(opts.profile);
       await bc.del('v3', 'customers', { 'id:in': id });
@@ -135,7 +116,7 @@ export function registerCustomers(program: Command): void {
       success(`Customer ${id} deleted`);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 }

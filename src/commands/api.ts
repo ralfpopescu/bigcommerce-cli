@@ -1,34 +1,30 @@
 import * as fs from 'fs';
 import { Command } from 'commander';
-import ora from 'ora';
-import fetch from 'node-fetch';
-import { getProfile } from '../config';
-import { ApiClient } from '../api/client';
-import { print, success, errorOut, OutputFormat } from '../output';
+import { print, success, errorOut, progress, OutputFormat } from '../output';
+import { client, parseInput, parseJsonFlag, addOpts } from '../shared';
+import { UsageError } from '../errors';
 
-const PAYMENTS_HOST = 'https://payments.bigcommerce.com/stores';
-
-function client(profile?: string): ApiClient {
-  const p = getProfile(profile);
-  return new ApiClient(p.storeHash, p.accessToken);
-}
-
-function parseInput(opts: { data?: string; file?: string }): unknown {
-  if (opts.data) return JSON.parse(opts.data);
-  if (opts.file) return JSON.parse(fs.readFileSync(opts.file, 'utf-8'));
-  return undefined;
-}
+// BIGC_PAYMENTS_URL, like BIGC_API_URL, exists only so tests can use a mock.
+const PAYMENTS_HOST = `${process.env.BIGC_PAYMENTS_URL || 'https://payments.bigcommerce.com'}/stores`;
 
 function pair(value: string, previous: Record<string, string>): Record<string, string> {
   const index = value.indexOf('=');
-  if (index === -1) throw new Error(`Expected key=value, got "${value}"`);
+  if (index === -1) throw new UsageError(`Expected key=value, got "${value}"`);
   return { ...previous, [value.slice(0, index)]: value.slice(index + 1) };
 }
 
-function addOpts(cmd: Command): Command {
-  return cmd
-    .option('-o, --output <format>', 'output format: json|table|pretty', 'json')
-    .option('--profile <name>', 'credential profile');
+/** Reads a GraphQL document from --query or --file. */
+export function readQuery(opts: { query?: string; file?: string }): string {
+  if (opts.query) return opts.query;
+  if (opts.file) {
+    if (!fs.existsSync(opts.file)) throw new UsageError(`--file: ${opts.file} not found`);
+    return fs.readFileSync(opts.file, 'utf-8');
+  }
+  throw new UsageError('Provide --query <graphql> or --file <path>');
+}
+
+export function readVariables(text?: string): Record<string, unknown> | undefined {
+  return text ? parseJsonFlag('--variables', text) as Record<string, unknown> : undefined;
 }
 
 export function registerApi(program: Command): void {
@@ -41,23 +37,28 @@ export function registerApi(program: Command): void {
       .option('--data <json>', 'request body as JSON')
       .option('--file <path>', 'path to a JSON file to send as the body')
       .option('--query <k=v>', 'query parameter (repeatable)', pair, {} as Record<string, string>)
-      .option('--raw', 'print the response envelope instead of unwrapping { data }')
+      .option('--raw', 'print the response envelope instead of unwrapping { data }'),
+    'json',
   ).action(async (
     method: string,
     pathname: string,
     opts: { data?: string; file?: string; query: Record<string, string>; raw?: boolean; output: OutputFormat; profile?: string },
   ) => {
-    const spinner = ora(`${method.toUpperCase()} ${pathname}`).start();
+    const verb = method.toUpperCase();
+    const spinner = progress(`${verb} ${pathname}`).start();
     try {
+      if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(verb)) {
+        throw new UsageError(`Unsupported method "${method}". Use GET, POST, PUT, PATCH or DELETE.`);
+      }
       const bc = client(opts.profile);
-      const res = await bc.request(method.toUpperCase(), pathname, {
-        body: parseInput(opts),
+      const res = await bc.request(verb, pathname, {
+        body: parseInput(opts, false),
         params: opts.query,
       });
       spinner.stop();
 
       if (res === null) {
-        success(`${method.toUpperCase()} ${pathname} — 204 No Content`);
+        success(`${verb} ${pathname} — 204 No Content`, { status: 204 });
         return;
       }
       const unwrapped = !opts.raw && res && typeof res === 'object' && 'data' in res
@@ -66,7 +67,7 @@ export function registerApi(program: Command): void {
       print(unwrapped, opts.output);
     } catch (e) {
       spinner.stop();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -76,27 +77,20 @@ export function registerApi(program: Command): void {
       .description('Run a query against the Admin GraphQL API')
       .option('--query <graphql>', 'the query or mutation')
       .option('--file <path>', 'path to a file holding the query')
-      .option('--variables <json>', 'variables as JSON')
+      .option('--variables <json>', 'variables as JSON'),
+    'json',
   ).action(async (opts: { query?: string; file?: string; variables?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Running query...').start();
+    const spinner = progress('Running query...').start();
     try {
-      const query = opts.query ?? (opts.file ? fs.readFileSync(opts.file, 'utf-8') : undefined);
-      if (!query) throw new Error('Provide --query <graphql> or --file <path>');
-
+      const query = readQuery(opts);
+      const variables = readVariables(opts.variables);
       const bc = client(opts.profile);
-      const res = await bc.graphql(query, opts.variables ? JSON.parse(opts.variables) : undefined) as {
-        data?: unknown;
-        errors?: { message: string }[];
-      };
+      const data = await bc.graphql(query, variables);
       spinner.stop();
-
-      if (res.errors?.length) {
-        errorOut(res.errors.map(e => e.message).join('; '));
-      }
-      print(res.data, opts.output);
+      print(data, opts.output);
     } catch (e) {
       spinner.stop();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 }
@@ -115,34 +109,26 @@ export function registerPaymentProcessing(payments: Command): void {
       .option('--data <json>', 'payment request as JSON')
       .option('--file <path>', 'path to a JSON file')
   ).action(async (opts: { token: string; data?: string; file?: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Processing payment...').start();
+    const spinner = progress('Processing payment...').start();
     try {
       const body = parseInput(opts);
-      if (body === undefined) throw new Error('Provide --data <json> or --file <path>');
-
-      const { storeHash } = getProfile(opts.profile);
-      const res = await fetch(`${PAYMENTS_HOST}/${storeHash}/payments`, {
+      const bc = client(opts.profile);
+      const payload = await bc.external(`${PAYMENTS_HOST}/${bc.store}/payments`, {
         method: 'POST',
         headers: {
           Authorization: `PAT ${opts.token}`,
           'Content-Type': 'application/json',
           Accept: 'application/vnd.bc.v1+json',
         },
-        body: JSON.stringify(body),
+        body,
       });
-      const payload = await res.json();
       spinner.stop();
-
-      if (!res.ok) {
-        const d = payload as { title?: string; errors?: unknown };
-        throw new Error(`${res.status}: ${d?.title ?? JSON.stringify(d?.errors ?? payload)}`);
-      }
-      const data = (payload as { data?: unknown }).data ?? payload;
+      const data = (payload as { data?: unknown } | null)?.data ?? payload;
       success('Payment processed');
       print(data, opts.output);
     } catch (e) {
       spinner.stop();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 }

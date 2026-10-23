@@ -1,23 +1,10 @@
 import { Command } from 'commander';
-import ora from 'ora';
-import { getProfile } from '../config';
-import { ApiClient } from '../api/client';
-import { print, success, errorOut, OutputFormat } from '../output';
+import { print, success, errorOut, OutputFormat, progress } from '../output';
+import { client, parseInput, addOpts } from '../shared';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
 
 const INVENTORY_FIELDS = ['product_id', 'variant_id', 'sku', 'location_id', 'available_to_sell', 'total_inventory_onhand', 'safety_stock', 'is_in_stock'];
-
-function client(profile?: string): ApiClient {
-  const p = getProfile(profile);
-  return new ApiClient(p.storeHash, p.accessToken);
-}
-
-function addOpts(cmd: Command): Command {
-  return cmd
-    .option('-o, --output <format>', 'output format: json|table|pretty', 'pretty')
-    .option('--profile <name>', 'credential profile');
-}
 
 export function registerInventory(program: Command): void {
   const inventory = program.command('inventory').description('Manage inventory');
@@ -33,7 +20,7 @@ export function registerInventory(program: Command): void {
       paramsFor('inventory', 'items')
     )
   ).action(async (opts: { locationId?: string; productId?: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Fetching inventory...').start();
+    const spinner = progress('Fetching inventory...').start();
     try {
       const bc = client(opts.profile);
       const params: Record<string, unknown> = queryParams(opts, paramsFor('inventory', 'items'));
@@ -51,7 +38,7 @@ export function registerInventory(program: Command): void {
       print(data, opts.output, INVENTORY_FIELDS);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 
@@ -64,7 +51,7 @@ export function registerInventory(program: Command): void {
       .option('--variant-id <id>', 'variant ID (optional)')
       .requiredOption('--quantity <n>', 'quantity to set')
   ).action(async (opts: { locationId: string; productId: string; variantId?: string; quantity: string; output: OutputFormat; profile?: string }) => {
-    const spinner = ora('Updating inventory...').start();
+    const spinner = progress('Updating inventory...').start();
     try {
       const bc = client(opts.profile);
       const item: Record<string, unknown> = {
@@ -80,7 +67,7 @@ export function registerInventory(program: Command): void {
       print(res.data, opts.output);
     } catch (e) {
       spinner.fail();
-      errorOut((e as Error).message);
+      errorOut(e);
     }
   });
 }
