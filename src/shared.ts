@@ -3,6 +3,8 @@ import { Command } from 'commander';
 import { getProfile } from './config';
 import { ApiClient } from './api/client';
 import { UsageError } from './errors';
+import { runtime } from './runtime';
+import { printNdjson } from './output';
 
 /** The plumbing every command file needs: a client, a JSON body, the common options. */
 
@@ -43,4 +45,19 @@ export function addOpts(cmd: Command, fallback: 'pretty' | 'json' = 'pretty'): C
   return cmd
     .option('-o, --output <format>', 'output format: json|table|pretty')
     .option('--profile <name>', 'credential profile');
+}
+
+/**
+ * Drains a paginated collection. Under --ndjson each page is printed as it
+ * arrives — a large export never has to fit in memory — and what's returned
+ * is empty, since it has already been written.
+ */
+export async function fetchAll(pages: AsyncGenerator<unknown[]>): Promise<unknown[]> {
+  const all: unknown[] = [];
+  if (runtime.ndjson) runtime.streamed = true;
+  for await (const page of pages) {
+    if (runtime.ndjson) printNdjson(page);
+    else all.push(...page);
+  }
+  return all;
 }

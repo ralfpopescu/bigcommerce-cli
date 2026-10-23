@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { print, errorOut, OutputFormat, progress } from '../output';
-import { client, parseInput, addOpts } from '../shared';
+import { client, parseInput, addOpts, fetchAll } from '../shared';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
 
@@ -14,7 +14,8 @@ export function registerChannels(program: Command): void {
       channels
         .command('list')
         .description('List channels')
-        .option('--all', 'fetch all pages'),
+        .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
       paramsFor('channels')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -24,7 +25,7 @@ export function registerChannels(program: Command): void {
       const filters = queryParams(opts, paramsFor('channels'));
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3('channels', filters);
+        data = await fetchAll(bc.pagesV3('channels', filters));
       } else {
         const res = await bc.get('v3', 'channels', filters) as { data: unknown[] };
         data = res.data;

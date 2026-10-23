@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { print, success, errorOut, OutputFormat, progress } from '../output';
-import { client, parseInput, addOpts } from '../shared';
+import { client, parseInput, addOpts, fetchAll } from '../shared';
 import { CliError, EXIT } from '../errors';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
@@ -17,7 +17,8 @@ export function registerCustomers(program: Command): void {
         .description('List customers')
         .option('--page <n>', 'page number', '1')
         .option('--limit <n>', 'results per page (max 250)', '50')
-        .option('--all', 'fetch all pages'),
+        .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
       paramsFor('customers')
     )
   ).action(async (opts: { page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -27,7 +28,7 @@ export function registerCustomers(program: Command): void {
       const filters = queryParams(opts, paramsFor('customers'));
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3('customers', filters);
+        data = await fetchAll(bc.pagesV3('customers', filters));
       } else {
         const res = await bc.get('v3', 'customers', { ...filters, page: opts.page, limit: opts.limit }) as { data: unknown[] };
         data = res.data;

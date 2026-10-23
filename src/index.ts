@@ -80,8 +80,10 @@ program
   .version(version);
 
 program.hook('preAction', (_root, action) => {
-  const opts = action.opts() as { output?: unknown; dryRun?: boolean };
-  runtime.output = resolveOutput(opts.output, jsonByDefault.has(action));
+  const opts = action.opts() as { output?: unknown; dryRun?: boolean; ndjson?: boolean };
+  runtime.ndjson = Boolean(opts.ndjson);
+  // NDJSON is a JSON format; anything else would mix tables into the stream.
+  runtime.output = runtime.ndjson ? 'json' : resolveOutput(opts.output, jsonByDefault.has(action));
   if (action.options.some(o => o.attributeName() === 'output')) {
     action.setOptionValue('output', runtime.output);
   }

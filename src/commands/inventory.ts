@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { print, success, errorOut, OutputFormat, progress } from '../output';
-import { client, parseInput, addOpts } from '../shared';
+import { client, parseInput, addOpts, fetchAll } from '../shared';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
 
@@ -16,7 +16,8 @@ export function registerInventory(program: Command): void {
         .description('List inventory items')
         .option('--location-id <id>', 'filter by location ID')
         .option('--product-id <id>', 'filter by product ID')
-        .option('--all', 'fetch all pages'),
+        .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
       paramsFor('inventory', 'items')
     )
   ).action(async (opts: { locationId?: string; productId?: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -29,7 +30,7 @@ export function registerInventory(program: Command): void {
 
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3('inventory/items', params);
+        data = await fetchAll(bc.pagesV3('inventory/items', params));
       } else {
         const res = await bc.get('v3', 'inventory/items', params) as { data: unknown[] };
         data = res.data;

@@ -10,4 +10,8 @@ export const runtime = {
   dryRun: false,
   /** Set once anything has gone to stdout, so json mode never prints a second document. */
   printed: false,
+  /** --ndjson: arrays print one compact record per line. */
+  ndjson: false,
+  /** Set once fetchAll has streamed records, so the final print is skipped. */
+  streamed: false,
 };

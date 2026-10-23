@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { print, success, errorOut, OutputFormat, progress } from '../output';
-import { client, parseInput, addOpts } from '../shared';
+import { client, parseInput, addOpts, fetchAll } from '../shared';
 import { UsageError } from '../errors';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
@@ -18,7 +18,8 @@ export function registerOrders(program: Command): void {
         .option('--status <status>', 'filter by status')
         .option('--page <n>', 'page number', '1')
         .option('--limit <n>', 'results per page (max 250)', '50')
-        .option('--all', 'fetch all pages'),
+        .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
       paramsFor('orders')
     )
   ).action(async (opts: { status?: string; page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -30,7 +31,7 @@ export function registerOrders(program: Command): void {
 
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV2('orders', params);
+        data = await fetchAll(bc.pagesV2('orders', params));
       } else {
         data = await bc.get('v2', 'orders', { ...params, page: opts.page, limit: opts.limit });
       }

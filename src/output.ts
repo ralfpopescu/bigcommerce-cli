@@ -27,6 +27,12 @@ function writeOut(text: string): void {
 }
 
 export function print(data: unknown, format: OutputFormat = runtime.output, fields?: string[]): void {
+  if (runtime.streamed) return;
+  if (runtime.ndjson) {
+    if (Array.isArray(data)) printNdjson(data);
+    else writeOut(JSON.stringify(data ?? null));
+    return;
+  }
   if (format === 'json') {
     writeOut(JSON.stringify(data ?? null, null, 2));
     return;

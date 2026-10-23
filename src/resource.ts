@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import { Command } from 'commander';
 import { print, success, errorOut, progress, OutputFormat } from './output';
-import { client, parseInput, addOpts } from './shared';
+import { client, parseInput, addOpts, fetchAll } from './shared';
 import { CliError, EXIT, UsageError } from './errors';
 
 export type Version = 'v2' | 'v3';
@@ -154,7 +154,8 @@ function registerList(parent: Command, spec: ResourceSpec): void {
     cmd
       .option('--page <n>', 'page number')
       .option('--limit <n>', 'results per page (max 250)')
-      .option('--all', 'fetch all pages');
+      .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive');
   }
   cmd.option('--query <k=v>', 'extra query parameter (repeatable)', collectPairs, {} as Record<string, string>);
 
@@ -165,7 +166,7 @@ function registerList(parent: Command, spec: ResourceSpec): void {
       const params = { ...collectParams(spec.params, opts), ...opts.query };
 
       if (paginated && opts.all) {
-        return version === 'v3' ? bc.getAllV3(resource, params) : bc.getAllV2(resource, params);
+        return fetchAll(version === 'v3' ? bc.pagesV3(resource, params) : bc.pagesV2(resource, params));
       }
       if (paginated) {
         if (opts.page) params.page = opts.page;

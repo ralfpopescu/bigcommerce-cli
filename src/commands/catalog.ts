@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { ApiClient, MultipartField } from '../api/client';
 import { print, success, errorOut, OutputFormat, progress } from '../output';
-import { client, parseInput, addOpts } from '../shared';
+import { client, parseInput, addOpts, fetchAll } from '../shared';
 import { UsageError } from '../errors';
 import { queryOption, queryParams } from '../resource';
 import { paramsFor } from '../resources';
@@ -84,7 +84,8 @@ export function registerCatalog(program: Command): void {
         .description('List products')
         .option('--page <n>', 'page number', '1')
         .option('--limit <n>', 'results per page (max 250)', '50')
-        .option('--all', 'fetch all pages'),
+        .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
       paramsFor('catalog', 'products')
     )
   ).action(async (opts: { page: string; limit: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -94,7 +95,7 @@ export function registerCatalog(program: Command): void {
       const filters = queryParams(opts, paramsFor('catalog', 'products'));
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3('catalog/products', filters);
+        data = await fetchAll(bc.pagesV3('catalog/products', filters));
       } else {
         const res = await bc.get('v3', 'catalog/products', { ...filters, page: opts.page, limit: opts.limit }) as { data: unknown[] };
         data = res.data;
@@ -235,13 +236,14 @@ export function registerCatalog(program: Command): void {
       .description('List images for a product')
       .requiredOption('--product-id <id>', 'product ID')
       .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
   ).action(async (opts: { productId: string; all?: boolean; output: OutputFormat; profile?: string }) => {
     const spinner = progress('Fetching images...').start();
     try {
       const bc = client(opts.profile);
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3(`catalog/products/${opts.productId}/images`);
+        data = await fetchAll(bc.pagesV3(`catalog/products/${opts.productId}/images`));
       } else {
         const res = await bc.get('v3', `catalog/products/${opts.productId}/images`) as { data: unknown[] };
         data = res.data;
@@ -387,7 +389,8 @@ export function registerCatalog(program: Command): void {
       categories
         .command('list')
         .description('List categories')
-        .option('--all', 'fetch all pages'),
+        .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
       paramsFor('catalog', 'categories')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -397,7 +400,7 @@ export function registerCatalog(program: Command): void {
       const filters = queryParams(opts, paramsFor('catalog', 'categories'));
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3('catalog/categories', filters);
+        data = await fetchAll(bc.pagesV3('catalog/categories', filters));
       } else {
         const res = await bc.get('v3', 'catalog/categories', filters) as { data: unknown[] };
         data = res.data;
@@ -551,7 +554,8 @@ export function registerCatalog(program: Command): void {
       brands
         .command('list')
         .description('List brands')
-        .option('--all', 'fetch all pages'),
+        .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive'),
       paramsFor('catalog', 'brands')
     )
   ).action(async (opts: { all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
@@ -561,7 +565,7 @@ export function registerCatalog(program: Command): void {
       const filters = queryParams(opts, paramsFor('catalog', 'brands'));
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3('catalog/brands', filters);
+        data = await fetchAll(bc.pagesV3('catalog/brands', filters));
       } else {
         const res = await bc.get('v3', 'catalog/brands', filters) as { data: unknown[] };
         data = res.data;
@@ -651,6 +655,7 @@ export function registerCatalog(program: Command): void {
         .description('List variants for a product')
         .requiredOption('--product-id <id>', 'product ID')
         .option('--all', 'fetch all pages')
+        .option('--ndjson', 'print one JSON record per line; with --all, stream pages as they arrive')
     )
   ).action(async (opts: { productId: string; all?: boolean; query: Record<string, string>; output: OutputFormat; profile?: string }) => {
     const spinner = progress('Fetching variants...').start();
@@ -658,7 +663,7 @@ export function registerCatalog(program: Command): void {
       const bc = client(opts.profile);
       let data: unknown;
       if (opts.all) {
-        data = await bc.getAllV3(`catalog/products/${opts.productId}/variants`, opts.query);
+        data = await fetchAll(bc.pagesV3(`catalog/products/${opts.productId}/variants`, opts.query));
       } else {
         const res = await bc.get('v3', `catalog/products/${opts.productId}/variants`, opts.query) as { data: unknown[] };
         data = res.data;
