@@ -2,7 +2,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 
-const CONFIG_DIR = path.join(os.homedir(), '.bc-cli');
+// BIGC_CONFIG_DIR lets tests (and anyone keeping several setups apart) point
+// the CLI somewhere other than the real credentials file.
+const CONFIG_DIR = process.env.BIGC_CONFIG_DIR || path.join(os.homedir(), '.bc-cli');
 const CREDENTIALS_FILE = path.join(CONFIG_DIR, 'credentials.json');
 
 const ENV_STORE_HASH = 'BIGC_STORE_HASH';

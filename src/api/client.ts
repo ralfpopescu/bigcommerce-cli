@@ -3,7 +3,9 @@ import * as path from 'path';
 import fetch, { Response } from 'node-fetch';
 import FormData from 'form-data';
 
-const BASE = 'https://api.bigcommerce.com/stores';
+// BIGC_API_URL exists for the test suite, which points the CLI at a local mock
+// server. Nothing else should need it.
+const BASE = `${process.env.BIGC_API_URL || 'https://api.bigcommerce.com'}/stores`;
 
 export type MultipartField = string | number | boolean | { filePath: string };
 
