@@ -13,13 +13,13 @@
   ],
   "license": "MIT",
   "author": "Ralf Popescu <ralfpopescu@gmail.com>",
-  "homepage": "https://github.com/ralfpopescu/bigc#readme",
+  "homepage": "https://github.com/ralfpopescu/bigcommerce-cli#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ralfpopescu/bigc.git"
+    "url": "git+https://github.com/ralfpopescu/bigcommerce-cli.git"
   },
   "bugs": {
-    "url": "https://github.com/ralfpopescu/bigc/issues"
+    "url": "https://github.com/ralfpopescu/bigcommerce-cli/issues"
   },
   "engines": {
     "node": ">=18"

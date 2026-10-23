@@ -23,21 +23,24 @@ npm install
 npm run build
 npm link              # exposes the `bigc` command on your PATH
 npm run dev -- <command>   # run without building
+npm test              # builds, then runs the suite against a local mock API
 ```
 
 ## Authentication
 
 Get a store hash and access token from the BigCommerce control panel:
-**Advanced Settings → API Accounts**. Grant the new API account only the scopes
+**Settings → Store-level API accounts**. Grant the new API account only the scopes
 you actually need — this CLI reaches every endpoint your token is allowed to
 reach, including destructive ones.
 
-Credentials are stored at `~/.bc-cli/credentials.json`, organized into named
-profiles. The file is written `0600` inside a `0700` directory.
+Credentials are stored at `~/.bc-cli/credentials.json` (or under
+`$BIGC_CONFIG_DIR`), organized into named profiles. The file is written `0600` inside a `0700` directory.
 
 ```bash
 bigc auth login                       # save the "default" profile, prompting
 bigc auth login --profile staging     # save a named profile
+bigc auth login --profile prod --read-only   # a profile that refuses every write
+bigc auth set prod --read-only false  # change that later
 bigc auth list                        # show saved profiles
 bigc auth use staging                 # switch the active profile
 bigc auth logout --profile staging    # remove a profile
@@ -132,6 +135,115 @@ Run `bigc <group> --help` at any level to see what's underneath it.
 | `segments` / `shopper-profiles` | customer segmentation both ways |
 | `subscribers`, `wishlists`, `currencies`, `geography`, `store`, `abandoned-carts`, `pickup` | the rest |
 
+## For agents and scripts
+
+`bigc` is built to be driven by programs — AI agents included — as well as
+people.
+
+### Discover commands
+
+```bash
+bigc commands                                 # every command, with its HTTP method and path
+bigc commands --json --filter custom-fields   # machine-readable, narrowed
+bigc help catalog products update --json      # one command's arguments, options, method, path
+```
+
+Each catalog entry has `command`, `description`, `arguments`, `options`,
+`http: {method, path}`, `mutating` (`true`, `false`, or `"conditional"` for
+`api` and the GraphQL commands), `body` and `multipart`.
+
+### Check the setup
+
+```bash
+bigc doctor --output json
+```
+
+```json
+{
+  "cli": { "version": "0.2.0" },
+  "profile": { "name": "default", "source": "profile", "storeHash": "abc123", "readOnly": false },
+  "store": { "id": "abc123", "name": "My Shop", "domain": "myshop.com", "secure_url": "https://myshop.com",
+             "status": "live", "plan_name": "Plus", "plan_level": "Plus", "plan_is_trial": false,
+             "country": "United States", "currency": "USD" },
+  "scopes": { "catalog": "ok", "orders": "ok", "customers": "forbidden", "content": "ok", "themes": "ok",
+              "channels": "ok", "inventory": "ok", "marketing": "ok", "settings": "ok", "webhooks": "ok" },
+  "scopeNote": "Read access only: each area is probed with one GET. Write scopes are not checked."
+}
+```
+
+`profile.name` is `null` and `source` is `"env"` when credentials come from
+`BIGC_STORE_HASH`/`BIGC_TOKEN`. BigCommerce has no endpoint that lists a
+token's scopes, so `scopes` comes from one GET per area: `ok`, `forbidden`
+(401/403) or `error` (anything else). `doctor` exits 3 when the credentials
+are rejected everywhere.
+
+### Output
+
+`--output json|table|pretty` picks the format. Without it, `BIGC_OUTPUT` is
+used, and without that the default is `pretty` on a terminal and `json` when
+stdout is piped. In json mode:
+
+- stdout is exactly one JSON document. Commands with nothing to return (a
+  delete, a 204) print `{"ok":true,"message":"…"}`.
+- no spinners and no colour codes.
+- `--ndjson` prints one record per line instead; with `--all` it streams
+  each page as it arrives, so a large export never sits in memory.
+
+### Errors and exit codes
+
+In json mode a failure writes one object to **stderr**, keeping
+BigCommerce's per-field errors:
+
+```json
+{"error":{"status":422,"title":"JSON data is missing or invalid","errors":{"price":"price must be greater than or equal to 0"},"method":"PUT","path":"/v3/catalog/products/12"}}
+```
+
+Other modes print the title and one line per field error.
+
+| Exit | Meaning |
+|---|---|
+| 0 | OK (including a dry run) |
+| 1 | Unexpected error |
+| 2 | Usage or bad input: unknown option, missing option, bad JSON in `--data`/`--file`/`--variables` |
+| 3 | Auth: 401/403, or no credentials |
+| 4 | Not found (404) |
+| 5 | Validation: 400/409/422, or GraphQL `errors[]` |
+| 6 | Rate limited, retries exhausted (429) |
+| 7 | Blocked by read-only mode |
+| 8 | Server error (5xx) |
+
+### Dry runs and read-only mode
+
+Every command that can write takes `--dry-run`. It sends nothing and prints
+the request instead (multipart uploads list field names and file paths, not
+bytes):
+
+```bash
+bigc catalog products update 12 --data '{"price":19.99}' --dry-run
+# {"dryRun":true,"method":"PUT","url":"https://api.bigcommerce.com/stores/abc123/v3/catalog/products/12","body":{"price":19.99}}
+```
+
+For commands that make several requests (`catalog products create
+--image-file …`), the dry run stops at the first write.
+
+Read-only mode refuses every write before it reaches the network, with exit
+7. Turn it on with `BIGC_READ_ONLY=1`, or save a profile with
+`auth login --read-only` / `auth set <profile> --read-only true`. Reads,
+dry runs and minting storefront tokens still work.
+
+Writes don't need a flag in normal mode; the confirmation step for agents
+lives in the agent's instructions, not the CLI.
+
+### Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `BIGC_STORE_HASH`, `BIGC_TOKEN` | Credentials without a saved profile |
+| `BIGC_OUTPUT` | Default output format: `json`, `table` or `pretty` |
+| `BIGC_READ_ONLY` | `1`/`true` refuses every write |
+| `BIGC_STOREFRONT_TOKEN` | Token for `bigc storefront graphql` |
+| `BIGC_CONFIG_DIR` | Where profiles live (default `~/.bc-cli`) |
+
 ## Escape hatches
 
 Anything not wrapped — a new endpoint, an undocumented parameter — is still one
@@ -148,17 +260,43 @@ And the Admin GraphQL API:
 ```bash
 bigc graphql --query '{ store { account { id } } }'
 bigc graphql --file query.graphql --variables '{"id":329}'
+bigc graphql schema --out admin-schema.json      # save the introspection result
 ```
+
+### Storefront GraphQL
+
+`bigc storefront graphql` talks to the GraphQL Storefront API — what Catalyst
+and other headless storefronts use — at the storefront's `/graphql`:
+
+```bash
+bigc storefront graphql --mint --query '{ site { products(first: 3) { edges { node { name } } } } }'
+bigc storefront graphql --channel-id 2 --token "$TOKEN" --file query.graphql
+bigc storefront graphql --mint --customer-id 42 --query '{ customer { email } }'
+bigc storefront graphql schema --out storefront-schema.json --mint
+```
+
+- **Endpoint**: `--domain <host>`, or `--channel-id <id>` (looks up the
+  channel's site URL), or by default the store's canonical
+  `store-{hash}.mybigcommerce.com`.
+- **Token**: `--token`, `BIGC_STOREFRONT_TOKEN`, or `--mint`, which creates a
+  one-hour private token with your API credentials (needs the *Storefront API
+  Tokens* manage scope). The store's `X-Auth-Token` is never sent to the
+  storefront.
+- **Customer context**: `--customer-id <id>` sends `X-Bc-Customer-Id`; with
+  `--mint` it mints a customer impersonation token instead.
+- Mutations (carts, checkout) honour `--dry-run` and read-only mode.
 
 ## Global flags
 
 | Flag | Description |
 |------|-------------|
-| `--output json\|table\|pretty` | Output format (default: `pretty`) |
+| `--output json\|table\|pretty` | Output format (default: `pretty` on a terminal, `json` when piped) |
 | `--profile <name>` | Override the active credential profile |
 | `--all` | Auto-paginate through every page |
 | `--query <k=v>` | Any query parameter, repeatable — works on every `list` |
 | `--data <json>` / `--file <path>` | Request body, inline or from a file |
+| `--dry-run` | On any command that writes: print the request, send nothing |
+| `--ndjson` | One JSON record per line; streams with `--all` |
 
 Common filters also have named options, so these are equivalent:
 
@@ -178,8 +316,12 @@ bigc catalog products list --query 'sku=autochoir-2'
   `payments.bigcommerce.com` and authenticates with a Payment Access Token, so
   it takes `--token` from `bigc payments access-token` rather than your store
   credentials.
-- **Channels can't be deleted** — `bigc channels update <id> --data
-  '{"status":"inactive"}'` is how a storefront is retired.
+- **Channels have no DELETE endpoint** — `bigc channels update <id> --data
+  '{"status":"inactive"}'` is how a storefront is retired reversibly. Setting
+  `"status":"deleted"` does delete it (support can restore it for 90 days).
+- **`orders delete-many`** calls `DELETE /v2/orders`, which archives every
+  order and takes no filters, so the command offers none and always needs
+  `--yes`.
 - **Digital product files can't be managed over the API at all** — control panel
   or WebDAV only. There's no command because there's no endpoint.
 - **`catalog categories create|update|delete`** go through
@@ -193,8 +335,10 @@ bigc catalog products list --query 'sku=autochoir-2'
 
 - **Base URL**: `https://api.bigcommerce.com/stores/{store_hash}/{version}`
 - **Auth**: `X-Auth-Token` header
-- **Rate limits**: 429 responses are retried automatically using the
+- **Rate limits**: 429 responses are retried (up to 3 times) using the
   `X-Rate-Limit-Time-Reset-Ms` header
+- **Write guards**: `--dry-run` and read-only mode are enforced in the HTTP
+  client, in front of every request
 - **Pagination**: `--all` follows V3's `meta.pagination` and V2's empty-array
   terminator
 
@@ -211,15 +355,21 @@ Adding a new endpoint is usually a few lines in `src/resources/`.
 
 ```
 src/
-├── commands/    hand-written commands: auth, api, graphql, and the
+├── commands/    hand-written commands: auth, api, graphql, doctor,
+│                storefront graphql, commands/help (discovery), and the
 │                multipart uploads under catalog/orders/customers/
 │                channels/inventory
 ├── resources/   declarative specs for the rest of the API surface
 ├── resource.ts  turns a spec into commander commands
 ├── api/         HTTP client: auth, rate limits, pagination, multipart
 ├── config.ts    credential file read/write
-├── output.ts    json/table/pretty formatters
+├── errors.ts    error classes and exit codes
+├── meta.ts      HTTP metadata behind `bigc commands --json`
+├── runtime.ts   per-invocation state: output format, dry run
+├── output.ts    json/table/pretty formatters, error and dry-run printing
+├── shared.ts    client factory, JSON input, common options
 └── index.ts     entry point
+test/            vitest suite; runs the built CLI against a mock server
 ```
 
 ## References

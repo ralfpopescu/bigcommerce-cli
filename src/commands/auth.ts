@@ -92,7 +92,7 @@ export function registerAuth(program: Command): void {
         if (!opts.storeHash || !opts.token) {
           // stderr, like the prompts themselves, so stdout stays clean for data.
           console.error(chalk.bold('\nBigCommerce API credentials'));
-          console.error(chalk.gray('Find these in: Store Control Panel → Settings → API Accounts\n'));
+          console.error(chalk.gray('Find these in: Store Control Panel → Settings → Store-level API accounts\n'));
         }
         const storeHash = opts.storeHash ?? await prompt('Store hash: ');
         const accessToken = opts.token ?? await promptSecret('Access token: ');
