@@ -13,6 +13,7 @@ export const CARTS: ResourceSpec = {
   // There is no list endpoint — a cart is only reachable by its ID.
   ops: ['get', 'create', 'update', 'delete'],
   params: ['include'],
+  writeParams: ['include'],
   actions: [
     {
       name: 'redirect-urls',
@@ -31,6 +32,7 @@ export const CARTS: ResourceSpec = {
       idLabel: 'cart item',
       ops: ['create', 'update', 'delete'],
       params: ['include'],
+      writeParams: ['include'],
     },
     {
       name: 'settings',
@@ -58,6 +60,7 @@ export const CHECKOUTS: ResourceSpec = {
   idLabel: 'checkout',
   ops: ['get', 'update'],
   params: ['include'],
+  writeParams: ['include'],
   actions: [
     {
       name: 'order',
@@ -98,6 +101,7 @@ export const CHECKOUTS: ResourceSpec = {
       idLabel: 'consignment',
       ops: ['create', 'update', 'delete'],
       params: ['include'],
+      writeParams: ['include'],
     },
     {
       name: 'coupons',

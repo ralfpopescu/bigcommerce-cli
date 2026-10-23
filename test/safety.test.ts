@@ -52,6 +52,23 @@ describe('--dry-run', () => {
     expect(u.json().body).toEqual({ price: 19.99 });
   });
 
+  it('create/update do not take list filters, which would be silently ignored', async () => {
+    // `promotions create --status DISABLED` used to send ?status=DISABLED and create it enabled.
+    const r = await runCli(['promotions', 'create', '--data', '{"name":"x"}', '--status', 'DISABLED', '--dry-run'], { server });
+    expect(r.code).toBe(2);
+    expect(r.stderr).toContain('--status');
+    const c = await runCli(['channels', 'update', '1', '--status', 'inactive', '--dry-run'], { server });
+    expect(c.code).toBe(2);
+    expect(server.requests).toHaveLength(0);
+  });
+
+  it('writes keep the query parameters they need', async () => {
+    const s = await runCli(['settings', 'security', 'update', '--channel-id', '2', '--data', '{"sitewide_https_enabled":true}', '--dry-run'], { server });
+    expect(s.json().query).toEqual({ channel_id: '2' });
+    const c = await runCli(['carts', 'items', 'create', '--cart-id', 'abc', '--include', 'redirect_urls', '--data', '{"line_items":[]}', '--dry-run'], { server });
+    expect(c.json().query).toEqual({ include: 'redirect_urls' });
+  });
+
   it('multipart lists file paths and field names, not bytes', async () => {
     const r = await runCli(['catalog', 'products', 'images', 'add', '--product-id', '12', '--file', image, '--description', 'Front', '--dry-run'], { server });
     expect(r.code).toBe(0);

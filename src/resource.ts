@@ -64,7 +64,12 @@ export interface ResourceSpec {
   deleteManyFilters?: string[];
   /** v3-batch: send the IDs as a JSON array body rather than as `deleteQuery`. */
   deleteBody?: boolean;
-  /** Query parameters for create/update. Defaults to `params`, which are often list-only filters. */
+  /**
+   * Query parameters for create/update. Defaults to `params` for singletons
+   * (their `channel_id` scopes the write) and to none otherwise: `params` are
+   * list filters, and sent on a write they're ignored, so `--status` or
+   * `--name` would look like they set a field and silently do nothing.
+   */
   writeParams?: string[];
   children?: ResourceSpec[];
   actions?: ActionSpec[];
@@ -228,6 +233,10 @@ function registerGet(parent: Command, spec: ResourceSpec): void {
   });
 }
 
+function writeParamsOf(spec: ResourceSpec): string[] | undefined {
+  return spec.writeParams ?? (spec.style?.endsWith('singleton') ? spec.params : undefined);
+}
+
 function registerCreate(parent: Command, spec: ResourceSpec): void {
   const style = spec.style as Style;
   const version = versionOf(style);
@@ -239,7 +248,7 @@ function registerCreate(parent: Command, spec: ResourceSpec): void {
     .option('--data <json>', 'request body as JSON')
     .option('--file <path>', 'path to a JSON file');
   addPathOpts(cmd, path);
-  addParamOpts(cmd, spec.writeParams ?? spec.params);
+  addParamOpts(cmd, writeParamsOf(spec));
 
   setMeta(cmd, { http: { method: 'POST', path: `/${version}/${path}` }, body: true });
 
@@ -251,7 +260,7 @@ function registerCreate(parent: Command, spec: ResourceSpec): void {
       const body = style === 'v3-batch' && !Array.isArray(input) ? [input] : input;
       const res = await bc.request('POST', `${version}/${resource}`, {
         body,
-        params: collectParams(spec.writeParams ?? spec.params, opts),
+        params: collectParams(writeParamsOf(spec), opts),
       });
       return isEnveloped(style) ? (res as { data: unknown }).data : res;
     }, data => {
@@ -273,7 +282,7 @@ function registerUpdate(parent: Command, spec: ResourceSpec): void {
   else if (!singleton) cmd.argument('<id>', `${spec.idLabel ?? spec.name} ID`);
   cmd.option('--data <json>', 'fields to update as JSON').option('--file <path>', 'path to a JSON file');
   addPathOpts(cmd, path);
-  addParamOpts(cmd, spec.writeParams ?? spec.params);
+  addParamOpts(cmd, writeParamsOf(spec));
 
   setMeta(cmd, { http: { method: 'PUT', path: `/${version}/${path}${singleton || batch ? '' : '/{id}'}` }, body: true });
 
@@ -285,7 +294,7 @@ function registerUpdate(parent: Command, spec: ResourceSpec): void {
       const resource = fill(path, opts);
       const input = parseInput(opts);
 
-      const params = collectParams(spec.writeParams ?? spec.params, opts);
+      const params = collectParams(writeParamsOf(spec), opts);
 
       if (batch) {
         if (!id && !Array.isArray(input)) {
